@@ -1,0 +1,299 @@
+﻿@{
+    ViewData["Title"] = "Tablero Kanban";
+}
+
+<div id="root-kanban"></div>
+
+@section Scripts {
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        function KanbanApp() {
+            const [tareas, setTareas] = useState([]);
+            const [titulo, setTitulo] = useState('');
+            const [materia, setMateria] = useState('');
+            const [urgencia, setUrgencia] = useState('Media');
+            const [subtareasInput, setSubtareasInput] = useState('');
+            const [archivoImg, setArchivoImg] = useState(null);
+            const [previewUrl, setPreviewUrl] = useState(null);
+            const [imagenModal, setImagenModal] = useState(null);
+            const [soloUrgentes, setSoloUrgentes] = useState(false);
+            const [nuevoSubtexto, setNuevoSubtexto] = useState({});
+            const fileInputRef = useRef(null);
+
+            const cargarKanbanSql = async () => {
+                const res = await fetch('/Home/ObtenerKanban');
+                const data = await res.json();
+                setTareas(data);
+            };
+
+            useEffect(() => {
+                cargarKanbanSql();
+            }, []);
+
+            const manejarSeleccionArchivo = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                if (!file.type.startsWith('image/')) {
+                    window.UI.showException('Formato Inválido', 'Solo se permiten archivos de imagen.', 'ERR_INVALID_IMAGE');
+                    e.target.value = '';
+                    return;
+                }
+                setArchivoImg(file);
+                setPreviewUrl(URL.createObjectURL(file));
+            };
+
+            const agregarTarea = async (e) => {
+                e.preventDefault();
+                if (!titulo.trim()) {
+                    window.UI.showException('Título Vacío', 'Ingresa el título de la tarea.', 'ERR_EMPTY_TITLE');
+                    return;
+                }
+
+                window.UI.showLoader('Subiendo imagen y guardando en TareasKanban...');
+                const formData = new FormData();
+                formData.append('titulo', titulo);
+                formData.append('materia', materia);
+                formData.append('urgencia', urgencia);
+                formData.append('subtareasComa', subtareasInput);
+                if (archivoImg) {
+                    formData.append('archivoImagen', archivoImg);
+                }
+
+                const res = await fetch('/Home/CrearTareaKanban', { method: 'POST', body: formData });
+                const data = await res.json();
+                window.UI.hideLoader();
+
+                if (!res.ok) {
+                    window.UI.showException('Error al Crear Tarea', data.error, data.codigo);
+                    return;
+                }
+
+                setTitulo('');
+                setMateria('');
+                setSubtareasInput('');
+                setArchivoImg(null);
+                setPreviewUrl(null);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+
+                window.UI.notify('Tarea Guardada en SQL', `"${titulo}" registrada correctamente.`, 'success');
+                await cargarKanbanSql();
+            };
+
+            const toggleCheckSubtarea = async (subId, tareaTitulo) => {
+                const res = await fetch(`/Home/ToggleSubtarea?subtareaId=${subId}`, { method: 'POST' });
+                const data = await res.json();
+                if (data.estadoAuto === 'done') {
+                    window.UI.notify('¡Checklist Completado!', `"${tareaTitulo}" se movió automáticamente a Terminado en SQL Server.`, 'success');
+                }
+                await cargarKanbanSql();
+            };
+
+            const agregarSubtareaIndividual = async (tareaId) => {
+                const texto = (nuevoSubtexto[tareaId] || '').trim();
+                if (!texto) return;
+                await fetch(`/Home/AgregarSubtarea?tareaId=${tareaId}&texto=${encodeURIComponent(texto)}`, { method: 'POST' });
+                setNuevoSubtexto({ ...nuevoSubtexto, [tareaId]: '' });
+                await cargarKanbanSql();
+            };
+
+            const moverTarea = async (id, nuevoEstado, nombreEstado) => {
+                await fetch(`/Home/MoverTareaKanban?tareaId=${id}&nuevoEstadoCodigo=${nuevoEstado}`, { method: 'POST' });
+                window.UI.notify('Estado Actualizado en BD', `La tarea pasó a ${nombreEstado}.`, 'info');
+                await cargarKanbanSql();
+            };
+
+            const eliminarTarea = async (id) => {
+                await fetch(`/Home/EliminarTareaKanban?tareaId=${id}`, { method: 'POST' });
+                window.UI.notify('Tarea Eliminada', 'Registro eliminado de TareasKanban.', 'warning');
+                await cargarKanbanSql();
+            };
+
+            const badgeColor = (urg) => {
+                if (urg === 'Alta') return 'bg-danger-subtle text-danger';
+                if (urg === 'Media') return 'bg-warning-subtle text-warning-emphasis';
+                return 'bg-secondary-subtle text-secondary';
+            };
+
+            const renderColumna = (estadoClave, nombreColumna, icono) => {
+                const filtradas = tareas
+                    .filter(t => t.estado === estadoClave)
+                    .filter(t => !soloUrgentes || t.urgencia === 'Alta');
+
+                return (
+                    <div className="col-md-4">
+                        <div className="card-minimal p-3 h-100 bg-light border-0">
+                            <div className="d-flex justify-content-between align-items-center mb-3 px-1">
+                                <h6 className="fw-semibold mb-0"><i className={`bi ${icono} me-2`}></i>{nombreColumna}</h6>
+                                <span className="badge bg-white text-dark border">{filtradas.length}</span>
+                            </div>
+                            <div className="d-flex flex-column gap-3">
+                                {filtradas.map(t => {
+                                    const subs = t.subtareas || [];
+                                    const completadas = subs.filter(s => s.hecho).length;
+                                    const pct = subs.length > 0 ? Math.round((completadas / subs.length) * 100) : 0;
+
+                                    return (
+                                        <div key={t.id} className="card-minimal p-3 bg-white">
+                                            <div className="d-flex justify-content-between align-items-start mb-1">
+                                                <span className={`tech-badge ${badgeColor(t.urgencia)}`}>{t.urgencia}</span>
+                                                <button onClick={() => eliminarTarea(t.id)} className="btn btn-sm p-0 text-muted border-0">
+                                                    <i className="bi bi-x-lg"></i>
+                                                </button>
+                                            </div>
+                                            <h6 className="fw-semibold mb-0 mt-2">{t.titulo}</h6>
+                                            <p className="text-muted small mb-2">{t.materia}</p>
+
+                                            {t.imagen && (
+                                                <div className="mb-3">
+                                                    <img src={t.imagen} alt={t.titulo} className="kanban-img-thumb" onClick={() => setImagenModal(t)} />
+                                                </div>
+                                            )}
+
+                                            <div className="bg-light rounded-3 p-2 mb-3">
+                                                <div className="d-flex justify-content-between align-items-center mb-1">
+                                                    <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                                        <i className="bi bi-check2-square me-1"></i>Checks SQL ({completadas}/{subs.length})
+                                                    </span>
+                                                    {subs.length > 0 && <span className="fw-semibold" style={{ fontSize: '0.75rem' }}>{pct}%</span>}
+                                                </div>
+                                                {subs.length > 0 && (
+                                                    <div className="progress mb-2" style={{ height: '4px' }}>
+                                                        <div className="progress-bar bg-dark" style={{ width: `${pct}%` }}></div>
+                                                    </div>
+                                                )}
+
+                                                <div className="d-flex flex-column gap-1 mb-2">
+                                                    {subs.map(sub => (
+                                                        <label key={sub.id} className="d-flex align-items-center gap-2 small cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="form-check-input mt-0"
+                                                                checked={sub.hecho}
+                                                                onChange={() => toggleCheckSubtarea(sub.id, t.titulo)}
+                                                            />
+                                                            <span className={sub.hecho ? 'text-decoration-line-through text-muted' : ''}>
+                                                                {sub.texto}
+                                                            </span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+
+                                                <div className="input-group input-group-sm">
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm"
+                                                        placeholder="Nuevo check en BD..."
+                                                        value={nuevoSubtexto[t.id] || ''}
+                                                        onChange={e => setNuevoSubtexto({ ...nuevoSubtexto, [t.id]: e.target.value })}
+                                                        onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), agregarSubtareaIndividual(t.id))}
+                                                    />
+                                                    <button type="button" onClick={() => agregarSubtareaIndividual(t.id)} className="btn btn-outline-secondary">
+                                                        <i className="bi bi-plus"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="d-flex gap-1 justify-content-end border-top pt-2">
+                                                {estadoClave !== 'todo' && (
+                                                    <button onClick={() => moverTarea(t.id, 'todo', 'Por Hacer')} className="btn btn-light btn-sm border py-0 px-2 small">Por hacer</button>
+                                                )}
+                                                {estadoClave !== 'doing' && (
+                                                    <button onClick={() => moverTarea(t.id, 'doing', 'En Proceso')} className="btn btn-light btn-sm border py-0 px-2 small">En proceso</button>
+                                                )}
+                                                {estadoClave !== 'done' && (
+                                                    <button onClick={() => moverTarea(t.id, 'done', 'Terminado')} className="btn btn-dark btn-sm py-0 px-2 small">Listo</button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div>
+                    <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+                        <div>
+                            <span className="tech-badge bg-info-subtle text-info-emphasis mb-1 d-inline-block">React 18 + SQL 3FN + Archivos</span>
+                            <h3 className="fw-semibold mb-0">Tablero Kanban de Entregas</h3>
+                        </div>
+                        <div className="form-check form-switch">
+                            <input className="form-check-input" type="checkbox" id="chkUrgentes" checked={soloUrgentes} onChange={e => setSoloUrgentes(e.target.checked)} />
+                            <label className="form-check-label small fw-medium" htmlFor="chkUrgentes">Solo urgentes</label>
+                        </div>
+                    </div>
+
+                    <form onSubmit={agregarTarea} className="card-minimal p-3 mb-4">
+                        <div className="row g-2 align-items-center">
+                            <div className="col-md-3">
+                                <input type="text" className="form-control" placeholder="Título de la entrega..." value={titulo} onChange={e => setTitulo(e.target.value)} />
+                            </div>
+                            <div className="col-md-2">
+                                <input type="text" className="form-control" placeholder="Materia" value={materia} onChange={e => setMateria(e.target.value)} />
+                            </div>
+                            <div className="col-md-3">
+                                <input type="text" className="form-control" placeholder="Checks separados por coma" value={subtareasInput} onChange={e => setSubtareasInput(e.target.value)} />
+                            </div>
+                            <div className="col-md-2">
+                                <select className="form-select" value={urgencia} onChange={e => setUrgencia(e.target.value)}>
+                                    <option value="Baja">Baja</option>
+                                    <option value="Media">Media</option>
+                                    <option value="Alta">Urgente</option>
+                                </select>
+                            </div>
+                            <div className="col-md-2 d-grid">
+                                <button type="submit" className="btn-dark-minimal">Guardar en BD</button>
+                            </div>
+                        </div>
+
+                        <div className="mt-2 pt-2 border-top d-flex flex-wrap align-items-center justify-content-between gap-2">
+                            <div className="d-flex align-items-center gap-2">
+                                <label className="small text-muted"><i className="bi bi-image me-1"></i>Subir imagen al servidor:</label>
+                                <input type="file" ref={fileInputRef} accept="image/*" className="form-control form-control-sm" style={{ maxWidth: '260px' }} onChange={manejarSeleccionArchivo} />
+                            </div>
+                            {previewUrl && (
+                                <div className="d-flex align-items-center gap-2">
+                                    <img src={previewUrl} style={{ height: '36px', width: '36px', objectFit: 'cover' }} className="rounded border" />
+                                    <span className="small text-success fw-medium">Archivo listo</span>
+                                </div>
+                            )}
+                        </div>
+                    </form>
+
+                    <div className="row g-3">
+                        {renderColumna('todo', 'Por Hacer', 'bi-circle')}
+                        {renderColumna('doing', 'En Proceso', 'bi-play-circle')}
+                        {renderColumna('done', 'Terminado', 'bi-check2-circle')}
+                    </div>
+
+                    {imagenModal && (
+                        <div className="loader-overlay" onClick={() => setImagenModal(null)}>
+                            <div className="card-minimal p-3 shadow-lg" style={{ maxWidth: '650px', width: '92%' }} onClick={e => e.stopPropagation()}>
+                                <div className="d-flex justify-content-between align-items-center mb-2">
+                                    <div>
+                                        <h6 className="fw-semibold mb-0">{imagenModal.titulo}</h6>
+                                        <span className="small text-muted">{imagenModal.materia}</span>
+                                    </div>
+                                    <button className="btn-close" onClick={() => setImagenModal(null)}></button>
+                                </div>
+                                <img src={imagenModal.imagen} className="img-fluid rounded-3 border" style={{ maxHeight: '70vh', width: '100%', objectFit: 'contain' }} />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root-kanban'));
+        root.render(<KanbanApp />);
+    </script>
+}

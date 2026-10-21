@@ -1,0 +1,235 @@
+﻿@{
+    ViewData["Title"] = "Billetera Diaria";
+}
+
+<div id="app-billetera" class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <span class="tech-badge bg-success-subtle text-success mb-1 d-inline-block">Vue.js 3 + SQL Stored Procedure</span>
+                <h3 class="fw-semibold mb-0">Billetera Diaria</h3>
+            </div>
+            <button @@click="reiniciarDia" class="btn btn-outline-secondary btn-sm rounded-3">
+                <i class="bi bi-arrow-counterclockwise"></i> Limpiar Gastos de Hoy
+            </button>
+        </div>
+
+        <div class="card-minimal p-4 mb-4">
+            <div class="row align-items-center g-3">
+                <div class="col-sm-6">
+                    <label class="text-muted small fw-medium mb-1">Presupuesto inicial del día ($)</label>
+                    <input type="number" v-model.number="presupuesto" @@change="guardarConfigSql" class="form-control form-control-lg fw-semibold">
+                </div>
+                <div class="col-sm-6 text-sm-end">
+                    <span class="text-muted small d-block">Saldo Disponible</span>
+                    <h2 class="fw-bold mb-0" :class="colorTextoSaldo">${{ saldoDisponible.toFixed(2) }}</h2>
+                    <small class="text-muted">Gastado hoy: ${{ totalGastado.toFixed(2) }}</small>
+                </div>
+            </div>
+
+            <div class="progress mt-3 mb-3" style="height: 8px;">
+                <div class="progress-bar" :class="colorBarra" :style="{ width: porcentajeGastado + '%' }"></div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-4 pt-2 border-top small">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="chkEstricto" v-model="bloquearSobregiro" @@change="guardarConfigSql">
+                    <label class="form-check-label text-muted" for="chkEstricto">
+                        Bloquear sobregiros desde SQL Server (sp_RegistrarGastoBilletera)
+                    </label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="chkSoloVerif" v-model="soloContarVerificados" @@change="guardarConfigSql">
+                    <label class="form-check-label text-muted" for="chkSoloVerif">
+                        Descontar solo gastos con Check verificado
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-minimal p-4 mb-4">
+            <h6 class="fw-semibold mb-3">Registrar movimiento en BD</h6>
+            <div class="row g-2 align-items-center">
+                <div class="col-md-4">
+                    <input type="text" v-model="nuevoConcepto" @@keyup.enter="agregarGasto" class="form-control" placeholder="¿En qué gastaste?">
+                </div>
+                <div class="col-md-3">
+                    <select v-model="nuevaCategoriaId" class="form-select">
+                        <option v-for="cat in categorias" :key="cat.id" :value="cat.id">{{ cat.nombre }}</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <input type="number" v-model.number="nuevoMonto" @@keyup.enter="agregarGasto" class="form-control" placeholder="Monto $">
+                </div>
+                <div class="col-md-3 d-grid">
+                    <button @@click="agregarGasto" class="btn-dark-minimal">Anexar a SQL</button>
+                </div>
+            </div>
+            <div class="form-check mt-2">
+                <input class="form-check-input" type="checkbox" id="chkPagadoYa" v-model="nuevoVerificado">
+                <label class="form-check-label small text-muted" for="chkPagadoYa">
+                    Marcar con check de "Ya pagado / Verificado" al insertar
+                </label>
+            </div>
+        </div>
+
+        <div class="card-minimal p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-semibold mb-0">Movimientos de hoy en SQL ({{ gastos.length }})</h6>
+                <span class="small text-muted">Verificados: {{ gastos.filter(g => g.verificado).length }}/{{ gastos.length }}</span>
+            </div>
+            <div v-if="gastos.length === 0" class="text-center text-muted py-4 small">
+                No hay movimientos registrados hoy en la base de datos.
+            </div>
+            <ul class="list-group list-group-flush" v-else>
+                <li v-for="gasto in gastos" :key="gasto.id" class="list-group-item px-0 py-3 d-flex justify-content-between align-items-center border-bottom">
+                    <div class="d-flex align-items-center gap-3">
+                        <input type="checkbox" class="form-check-input fs-5 mt-0" :checked="gasto.verificado" @@change="toggleVerificado(gasto)">
+                        <div :class="{ 'opacity-50': !gasto.verificado && soloContarVerificados }">
+                            <span class="fw-medium d-block">
+                                {{ gasto.concepto }}
+                                <span v-if="gasto.verificado" class="badge bg-success-subtle text-success ms-1" style="font-size: 0.65rem;">Pagado</span>
+                                <span v-else class="badge bg-secondary-subtle text-secondary ms-1" style="font-size: 0.65rem;">Pendiente</span>
+                            </span>
+                            <span class="text-muted small">{{ gasto.categoria }} &bull; {{ gasto.hora }}</span>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="fw-semibold text-danger">-${{ gasto.monto.toFixed(2) }}</span>
+                        <button @@click="eliminarGasto(gasto)" class="btn btn-sm text-muted p-0 border-0">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    presupuesto: 250,
+                    bloquearSobregiro: true,
+                    soloContarVerificados: false,
+                    categorias: [],
+                    gastos: [],
+                    nuevoConcepto: '',
+                    nuevaCategoriaId: 1,
+                    nuevoMonto: null,
+                    nuevoVerificado: true
+                }
+            },
+            computed: {
+                totalGastado() {
+                    return this.gastos
+                        .filter(g => !this.soloContarVerificados || g.verificado)
+                        .reduce((acc, item) => acc + item.monto, 0);
+                },
+                saldoDisponible() {
+                    return (this.presupuesto || 0) - this.totalGastado;
+                },
+                porcentajeGastado() {
+                    if (!this.presupuesto || this.presupuesto <= 0) return 0;
+                    return Math.min((this.totalGastado / this.presupuesto) * 100, 100);
+                },
+                colorBarra() {
+                    if (this.porcentajeGastado < 60) return 'bg-success';
+                    if (this.porcentajeGastado < 85) return 'bg-warning';
+                    return 'bg-danger';
+                },
+                colorTextoSaldo() {
+                    return this.saldoDisponible < 0 ? 'text-danger' : 'text-dark';
+                }
+            },
+            methods: {
+                async cargarDesdeSql() {
+                    const res = await fetch('/Home/ObtenerBilletera');
+                    const data = await res.json();
+                    this.presupuesto = data.presupuesto;
+                    this.bloquearSobregiro = data.bloquearSobregiro;
+                    this.soloContarVerificados = data.soloContarVerificados;
+                    this.categorias = data.categorias;
+                    this.gastos = data.gastos;
+                    if (this.categorias.length > 0 && !this.nuevaCategoriaId) {
+                        this.nuevaCategoriaId = this.categorias[0].id;
+                    }
+                },
+                async agregarGasto() {
+                    if (!this.nuevoConcepto.trim()) {
+                        window.UI.showException('Concepto Vacío', 'Especifica en qué gastaste el dinero.', 'ERR_WALLET_CONCEPT');
+                        return;
+                    }
+                    if (!this.nuevoMonto || this.nuevoMonto <= 0) {
+                        window.UI.showException('Monto Inválido', 'El monto debe ser mayor a $0.00.', 'ERR_WALLET_AMOUNT');
+                        return;
+                    }
+
+                    window.UI.showLoader('Ejecutando sp_RegistrarGastoBilletera...');
+                    const res = await fetch('/Home/AgregarGasto', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            categoriaId: this.nuevaCategoriaId,
+                            concepto: this.nuevoConcepto,
+                            monto: this.nuevoMonto,
+                            verificado: this.nuevoVerificado
+                        })
+                    });
+                    const data = await res.json();
+                    window.UI.hideLoader();
+
+                    if (!res.ok) {
+                        window.UI.showException('Transacción Rechazada por SQL Server', data.error, data.codigo);
+                        return;
+                    }
+
+                    window.UI.notify('Gasto Guardado en BD', `-$${this.nuevoMonto.toFixed(2)} en ${this.nuevoConcepto}.`, 'success');
+                    this.nuevoConcepto = '';
+                    this.nuevoMonto = null;
+                    await this.cargarDesdeSql();
+                },
+                async guardarConfigSql() {
+                    if (this.presupuesto < 0) {
+                        window.UI.showException('Presupuesto Inválido', 'El presupuesto no puede ser negativo.', 'ERR_CHECK_BUDGET');
+                        this.presupuesto = 0;
+                    }
+                    await fetch('/Home/ActualizarConfigBilletera', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            presupuesto: this.presupuesto,
+                            bloquearSobregiro: this.bloquearSobregiro,
+                            soloContarVerificados: this.soloContarVerificados
+                        })
+                    });
+                    window.UI.notify('Configuración Actualizada', 'Preferencias guardadas en ConfiguracionBilletera.', 'info', false);
+                },
+                async toggleVerificado(gasto) {
+                    await fetch(`/Home/ToggleGastoVerificado?id=${gasto.id}`, { method: 'POST' });
+                    await this.cargarDesdeSql();
+                },
+                async eliminarGasto(gasto) {
+                    await fetch(`/Home/EliminarGasto?id=${gasto.id}`, { method: 'POST' });
+                    window.UI.notify('Registro Eliminado', `Se eliminó "${gasto.concepto}" de SQL Server.`, 'info');
+                    await this.cargarDesdeSql();
+                },
+                async reiniciarDia() {
+                    window.UI.showLoader('Limpiando movimientos de hoy en SQL Server...');
+                    await fetch('/Home/ReiniciarBilleteraHoy', { method: 'POST' });
+                    await this.cargarDesdeSql();
+                    window.UI.hideLoader();
+                    window.UI.notify('Día Reiniciado', 'Movimientos del día eliminados de la BD.', 'warning');
+                }
+            },
+            mounted() {
+                this.cargarDesdeSql();
+            }
+        }).mount('#app-billetera');
+    </script>
+}

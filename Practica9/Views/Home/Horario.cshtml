@@ -1,0 +1,199 @@
+﻿@{
+    ViewData["Title"] = "Armador de Horarios";
+}
+
+<div id="root-horario"></div>
+
+@section Scripts {
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function HorarioApp() {
+            const [dias, setDias] = useState([]);
+            const [horas, setHoras] = useState([]);
+            const [colores, setColores] = useState([]);
+            const [clases, setClases] = useState([]);
+
+            const [materia, setMateria] = useState('');
+            const [salon, setSalon] = useState('');
+            const [diasSeleccionados, setDiasSeleccionados] = useState([1]);
+            const [bloqueTiempoId, setBloqueTiempoId] = useState(1);
+            const [colorId, setColorId] = useState(1);
+
+            const cargarHorarioSql = async () => {
+                const res = await fetch('/Home/ObtenerHorario');
+                const data = await res.json();
+                setDias(data.dias);
+                setHoras(data.horas);
+                setColores(data.colores);
+                setClases(data.clases);
+            };
+
+            useEffect(() => {
+                cargarHorarioSql();
+            }, []);
+
+            const toggleDiaCheck = (diaId) => {
+                if (diasSeleccionados.includes(diaId)) {
+                    setDiasSeleccionados(diasSeleccionados.filter(id => id !== diaId));
+                } else {
+                    setDiasSeleccionados([...diasSeleccionados, diaId]);
+                }
+            };
+
+            const agregarClase = async (e) => {
+                e.preventDefault();
+                if (!materia.trim()) {
+                    window.UI.showException('Materia Vacía', 'Escribe el nombre de la materia.', 'ERR_SCHEDULE_NAME');
+                    return;
+                }
+                if (diasSeleccionados.length === 0) {
+                    window.UI.showException('Sin Días Marcados', 'Marca con un check al menos un día.', 'ERR_NO_DAYS');
+                    return;
+                }
+
+                window.UI.showLoader('Ejecutando sp_AsignarBloqueHorario en SQL Server...');
+                const res = await fetch('/Home/AsignarHorario', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        materia,
+                        salon,
+                        diasIds: diasSeleccionados,
+                        bloqueTiempoId: Number(bloqueTiempoId),
+                        colorId: Number(colorId)
+                    })
+                });
+                const data = await res.json();
+                window.UI.hideLoader();
+
+                if (!res.ok) {
+                    window.UI.showException('Colisión Detectada en SQL Server', data.error, data.codigo);
+                    return;
+                }
+
+                window.UI.notify('Horario Guardado en BD', `"${materia}" registrada sin traslapes.`, 'success');
+                setMateria('');
+                setSalon('');
+                await cargarHorarioSql();
+            };
+
+            const toggleAsistencia = async (horarioId, materiaNombre) => {
+                await fetch(`/Home/ToggleAsistenciaHorario?horarioId=${horarioId}`, { method: 'POST' });
+                window.UI.notify('Asistencia Actualizada', `Check de asistencia actualizado para ${materiaNombre}.`, 'info', false);
+                await cargarHorarioSql();
+            };
+
+            const eliminarClase = async (horarioId) => {
+                await fetch(`/Home/EliminarBloqueHorario?horarioId=${horarioId}`, { method: 'POST' });
+                window.UI.notify('Bloque Eliminado', 'Se liberó el bloque en HorarioClases.', 'warning');
+                await cargarHorarioSql();
+            };
+
+            return (
+                <div>
+                    <div className="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <span className="tech-badge bg-info-subtle text-info-emphasis mb-1 d-inline-block">React 18 + sp_AsignarBloqueHorario</span>
+                            <h3 className="fw-semibold mb-0">Armador Visual de Horarios (3FN)</h3>
+                        </div>
+                        <button onClick={() => window.print()} className="btn btn-outline-dark btn-sm rounded-3">
+                            <i className="bi bi-printer me-1"></i> Imprimir / PDF
+                        </button>
+                    </div>
+
+                    <form onSubmit={agregarClase} className="card-minimal p-3 mb-4">
+                        <div className="row g-2 align-items-center mb-3">
+                            <div className="col-md-4">
+                                <input type="text" className="form-control" placeholder="Materia" value={materia} onChange={e => setMateria(e.target.value)} />
+                            </div>
+                            <div className="col-md-2">
+                                <input type="text" className="form-control" placeholder="Salón / Lab" value={salon} onChange={e => setSalon(e.target.value)} />
+                            </div>
+                            <div className="col-md-2">
+                                <select className="form-select" value={bloqueTiempoId} onChange={e => setBloqueTiempoId(e.target.value)}>
+                                    {horas.map(h => <option key={h.id} value={h.id}>{h.rango}</option>)}
+                                </select>
+                            </div>
+                            <div className="col-md-2">
+                                <select className="form-select" value={colorId} onChange={e => setColorId(e.target.value)}>
+                                    {colores.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                                </select>
+                            </div>
+                            <div className="col-md-2 d-grid">
+                                <button type="submit" className="btn-dark-minimal">Asignar en BD</button>
+                            </div>
+                        </div>
+
+                        <div className="d-flex flex-wrap align-items-center gap-2 pt-2 border-top">
+                            <span className="small text-muted me-2"><i className="bi bi-check2-circle me-1"></i>Días (Catálogo DiasSemana):</span>
+                            {dias.map(d => (
+                                <label key={d.id} className={`check-pill ${diasSeleccionados.includes(d.id) ? 'active' : ''}`}>
+                                    <input
+                                        type="checkbox"
+                                        className="form-check-input mt-0"
+                                        checked={diasSeleccionados.includes(d.id)}
+                                        onChange={() => toggleDiaCheck(d.id)}
+                                    />
+                                    <span>{d.nombre}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </form>
+
+                    <div className="card-minimal overflow-hidden">
+                        <div className="table-responsive">
+                            <table className="table table-bordered mb-0 align-middle text-center" style={{ tableLayout: 'fixed' }}>
+                                <thead className="table-light">
+                                    <tr>
+                                        <th style={{ width: '130px' }} className="small text-muted fw-semibold py-3">Bloque (TIME)</th>
+                                        {dias.map(d => <th key={d.id} className="small fw-semibold py-3">{d.nombre}</th>)}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {horas.map(h => (
+                                        <tr key={h.id}>
+                                            <td className="small text-muted fw-medium bg-light">{h.rango}</td>
+                                            {dias.map(d => {
+                                                const bloque = clases.find(c => c.diaId === d.id && c.bloqueTiempoId === h.id);
+                                                return (
+                                                    <td key={d.id} className="p-1" style={{ height: '82px' }}>
+                                                        {bloque ? (
+                                                            <div className="p-2 rounded-3 h-100 d-flex flex-column justify-content-center position-relative" style={{ backgroundColor: bloque.color }}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="form-check-input position-absolute top-0 start-0 ms-1 mt-1"
+                                                                    checked={bloque.asistido}
+                                                                    onChange={() => toggleAsistencia(bloque.id, bloque.materia)}
+                                                                    title="Check en tabla AsistenciasClase"
+                                                                />
+                                                                <button onClick={() => eliminarClase(bloque.id)} className="btn btn-sm p-0 position-absolute top-0 end-0 me-1 text-muted border-0">
+                                                                    <i className="bi bi-x"></i>
+                                                                </button>
+                                                                <span className="fw-semibold small d-block text-truncate mt-2">{bloque.materia}</span>
+                                                                <span className="text-muted" style={{ fontSize: '0.72rem' }}>
+                                                                    {bloque.salon} {bloque.asistido && <i className="bi bi-check-circle-fill text-success ms-1"></i>}
+                                                                </span>
+                                                            </div>
+                                                        ) : null}
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root-horario'));
+        root.render(<HorarioApp />);
+    </script>
+}

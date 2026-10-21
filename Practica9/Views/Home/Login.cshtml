@@ -1,0 +1,96 @@
+﻿@{
+    ViewData["Title"] = "Iniciar Sesión";
+}
+
+<div id="app-login" class="row justify-content-center align-items-center" style="min-height: 70vh;">
+    <div class="col-md-5 col-lg-4">
+        <div class="card-minimal p-4 p-md-5">
+            <div class="text-center mb-4">
+                <div class="d-inline-flex align-items-center justify-content-center bg-dark text-white rounded-3 mb-3" style="width: 48px; height: 48px;">
+                    <i class="bi bi-boxes fs-4"></i>
+                </div>
+                <h4 class="fw-semibold mb-1">GarAngelito Tools Pro</h4>
+                <p class="text-muted small mb-0">Ingresa a tu cuenta estudiantil</p>
+            </div>
+
+            <form @@submit.prevent="iniciarSesion">
+                <div class="mb-3">
+                    <label class="form-label small text-muted fw-medium">Correo Electrónico</label>
+                    <input type="email" v-model="correo" class="form-control" placeholder="alumno@ipn.mx" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small text-muted fw-medium">Contraseña</label>
+                    <input :type="mostrarPass ? 'text' : 'password'" v-model="password" class="form-control" placeholder="••••••••" required>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-4 small">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="chkVerPass" v-model="mostrarPass">
+                        <label class="form-check-label text-muted" for="chkVerPass">Mostrar contraseña</label>
+                    </div>
+                </div>
+
+                <div class="d-grid mb-3">
+                    <button type="submit" class="btn-dark-minimal py-2" :disabled="cargando">
+                        <span v-if="cargando" class="spinner-border spinner-border-sm me-2"></span>
+                        {{ cargando ? 'Verificando...' : 'Iniciar Sesión' }}
+                    </button>
+                </div>
+
+                <div class="text-center border-top pt-3 small">
+                    <span class="text-muted">¿Aún no tienes cuenta?</span>
+                    <a asp-controller="Home" asp-action="Registro" class="fw-semibold text-dark text-decoration-none ms-1">
+                        Regístrate como Estudiante
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    correo: '',
+                    password: '',
+                    mostrarPass: false,
+                    cargando: false
+                }
+            },
+            methods: {
+                async iniciarSesion() {
+                    this.cargando = true;
+                    window.UI.showLoader('Validando credenciales en GarAngelitoToolsProDB...');
+
+                    try {
+                        const res = await fetch('/Home/IniciarSesion', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ correo: this.correo, password: this.password })
+                        });
+                        const data = await res.json();
+                        window.UI.hideLoader();
+
+                        if (!res.ok) {
+                            window.UI.showException('Acceso Denegado', data.error, data.codigo);
+                            return;
+                        }
+
+                        window.location.href = data.redirectUrl;
+                    } catch (e) {
+                        window.UI.hideLoader();
+                        window.UI.showException('Error de Conexión', 'No se pudo conectar con el servidor.', 'ERR_NET_LOGIN');
+                    } finally {
+                        this.cargando = false;
+                    }
+                }
+            }
+        }).mount('#app-login');
+    </script>
+}

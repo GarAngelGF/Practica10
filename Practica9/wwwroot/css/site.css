@@ -1,0 +1,129 @@
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #f8f9fa;
+    color: #212529;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.card-minimal {
+    background: #ffffff;
+    border: 1px solid #eaeaea;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card-minimal-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+    border-color: #d0d7de;
+}
+
+.nav-link {
+    color: #555 !important;
+    font-size: 0.92rem;
+    font-weight: 500;
+}
+
+    .nav-link:hover {
+        background-color: #f1f3f5;
+        color: #000 !important;
+    }
+
+.form-control, .form-select {
+    border-radius: 8px;
+    border-color: #dee2e6;
+    font-size: 0.95rem;
+    padding: 0.55rem 0.85rem;
+}
+
+    .form-control:focus, .form-select:focus {
+        box-shadow: 0 0 0 3px rgba(33, 37, 41, 0.08);
+        border-color: #212529;
+    }
+
+/* Estilo minimalista para Checkboxes y Switches */
+.form-check-input {
+    cursor: pointer;
+    border-color: #adb5bd;
+}
+
+    .form-check-input:checked {
+        background-color: #212529;
+        border-color: #212529;
+    }
+
+    .form-check-input:focus {
+        box-shadow: 0 0 0 3px rgba(33, 37, 41, 0.12);
+        border-color: #212529;
+    }
+
+.check-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    user-select: none;
+    background: #fff;
+    transition: all 0.15s ease;
+}
+
+    .check-pill.active {
+        background: #212529;
+        color: #fff;
+        border-color: #212529;
+    }
+
+.btn-dark-minimal {
+    background-color: #212529;
+    color: #fff;
+    border-radius: 8px;
+    padding: 0.55rem 1.1rem;
+    font-weight: 500;
+    border: none;
+}
+
+    .btn-dark-minimal:hover {
+        background-color: #343a40;
+        color: #fff;
+    }
+
+.tech-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+}
+
+/* Loader de pantalla completa */
+.loader-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(3px);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Miniaturas en Kanban */
+.kanban-img-thumb {
+    width: 100%;
+    height: 125px;
+    object-fit: cover;
+    border-radius: 8px;
+    cursor: zoom-in;
+    border: 1px solid #eaeaea;
+}

@@ -1,0 +1,108 @@
+﻿@{
+    ViewData["Title"] = "Panel del Estudiante";
+}
+
+<div class="row mb-4 align-items-center">
+    <div class="col-md-8">
+        <span class="text-muted small text-uppercase fw-semibold">@ViewBag.FechaActual</span>
+        <h2 class="fw-semibold mt-1 mb-0">Hola, @ViewBag.AlumnoNombre</h2>
+        <span class="small text-muted"><i class="bi bi-mortarboard me-1"></i>@ViewBag.AlumnoCarrera</span>
+    </div>
+    <div class="col-md-4 mt-3 mt-md-0">
+        <div class="card-minimal p-3">
+            <div class="d-flex justify-content-between small mb-1">
+                <span class="text-muted">Progreso del mes</span>
+                <span class="fw-semibold">@ViewBag.ProgresoMes%</span>
+            </div>
+            <div class="progress" style="height: 6px;">
+                <div class="progress-bar bg-dark" style="width: @ViewBag.ProgresoMes%"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <a asp-action="Billetera" class="text-decoration-none text-dark">
+            <div class="card-minimal card-minimal-hover p-4 h-100">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <i class="bi bi-wallet2 fs-3"></i>
+                    <span class="tech-badge bg-success-subtle text-success">Vue.js 3 + Stored Proc</span>
+                </div>
+                <h5 class="fw-semibold mb-1">Billetera Diaria</h5>
+                <p class="text-muted small mb-0">Movimientos persistentes en SQL Server con bloqueo de sobregiros desde procedimiento almacenado.</p>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-md-6">
+        <a asp-action="Kanban" class="text-decoration-none text-dark">
+            <div class="card-minimal card-minimal-hover p-4 h-100">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <i class="bi bi-kanban fs-3"></i>
+                    <span class="tech-badge bg-info-subtle text-info-emphasis">React 18 + SQL 3FN</span>
+                </div>
+                <h5 class="fw-semibold mb-1">Tablero Kanban + Imágenes en Servidor</h5>
+                <p class="text-muted small mb-0">Guarda fotos en wwwroot/uploads y sincroniza los checks de subtareas en SQL Server.</p>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-md-6">
+        <a asp-action="Horario" class="text-decoration-none text-dark">
+            <div class="card-minimal card-minimal-hover p-4 h-100">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <i class="bi bi-calendar3-week fs-3"></i>
+                    <span class="tech-badge bg-info-subtle text-info-emphasis">React 18 + Stored Proc</span>
+                </div>
+                <h5 class="fw-semibold mb-1">Armador Visual de Horarios</h5>
+                <p class="text-muted small mb-0">Validación de choques mediante sp_AsignarBloqueHorario y control de asistencia por fecha.</p>
+            </div>
+        </a>
+    </div>
+
+    <div class="col-md-6">
+        <a asp-action="Apa" class="text-decoration-none text-dark">
+            <div class="card-minimal card-minimal-hover p-4 h-100">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <i class="bi bi-journal-bookmark fs-3"></i>
+                    <span class="tech-badge bg-secondary-subtle text-secondary-emphasis">Vue.js + Vista SQL 3FN</span>
+                </div>
+                <h5 class="fw-semibold mb-1">Formateador de Citas APA 7</h5>
+                <p class="text-muted small mb-0">Autores atómicos en 1FN/3FN y formato dinámico mediante la vista vw_ReferenciasApaFormateadas.</p>
+            </div>
+        </a>
+    </div>
+</div>
+
+<!-- Checklist Rápido de Rutina Persistente en SQL Server -->
+<div class="card-minimal p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-semibold mb-0"><i class="bi bi-check2-square me-2"></i>Checklist antes de salir a clases (Tabla RutinaChecks)</h6>
+        <span class="small text-muted">Guardado en SQL Server</span>
+    </div>
+    <div class="row g-2">
+        @foreach (var item in ViewBag.RutinaChecks)
+        {
+            <div class="col-sm-6 col-md-3">
+                <label class="d-flex align-items-center gap-2 p-2 border rounded-3 w-100 cursor-pointer">
+                    <input type="checkbox" class="form-check-input mt-0"
+                           @(item.CompletadoHoy ? "checked" : "")
+                           onchange="toggleRutinaSql(@item.CheckId, this.checked, '@item.Descripcion')">
+                    <span class="small">@item.Descripcion</span>
+                </label>
+            </div>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        async function toggleRutinaSql(checkId, estado, desc) {
+            await fetch(`/Home/ToggleRutinaCheck?checkId=${checkId}&estado=${estado}`, { method: 'POST' });
+            if (estado) {
+                window.UI.notify('Checklist SQL Actualizado', `"${desc}" marcado como listo en la BD.`, 'info', false);
+            }
+        }
+    </script>
+}
