@@ -28,9 +28,7 @@ namespace Practica9.Controllers
         {
             string sqlCatalogos = @"
                 IF NOT EXISTS (SELECT 1 FROM Roles WHERE Nombre = 'Estudiante')
-                BEGIN
                     INSERT INTO Roles (Nombre) VALUES ('Estudiante');
-                END
 
                 IF NOT EXISTS (SELECT 1 FROM TiposNotificacion)
                 BEGIN
@@ -39,35 +37,69 @@ namespace Practica9.Controllers
                     ('danger', 'bi-x-circle-fill'), ('info', 'bi-info-circle-fill');
                 END
 
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CategoriasGasto') AND name = 'TipoFlujo')
+                BEGIN
+                    EXEC('ALTER TABLE CategoriasGasto ADD TipoFlujo VARCHAR(15) NOT NULL DEFAULT ''GASTO''');
+                END
+
                 IF NOT EXISTS (SELECT 1 FROM CategoriasGasto)
                 BEGIN
-                    INSERT INTO CategoriasGasto (Nombre, IconoBootstrap) VALUES 
-                    ('Transporte', 'bi-bus-front'), ('Comida', 'bi-egg-fried'), 
-                    ('Escolar', 'bi-book'), ('Otro', 'bi-lightning');
+                    INSERT INTO CategoriasGasto (Nombre, IconoBootstrap, TipoFlujo) VALUES 
+                    ('Transporte', 'bi-bus-front', 'GASTO'), ('Comida', 'bi-egg-fried', 'GASTO'), 
+                    ('Escolar', 'bi-book', 'GASTO'), ('Otro', 'bi-lightning', 'GASTO');
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM CategoriasGasto WHERE Nombre = 'Aumento de Presupuesto')
+                    INSERT INTO CategoriasGasto (Nombre, IconoBootstrap, TipoFlujo) VALUES ('Aumento de Presupuesto', 'bi-plus-circle', 'AUMENTO');
+
+                IF NOT EXISTS (SELECT 1 FROM CategoriasGasto WHERE Nombre = 'Disminución de Presupuesto')
+                    INSERT INTO CategoriasGasto (Nombre, IconoBootstrap, TipoFlujo) VALUES ('Disminución de Presupuesto', 'bi-dash-circle', 'DISMINUCION');
+
+                IF OBJECT_ID('PresupuestosDiarios', 'U') IS NULL
+                BEGIN
+                    CREATE TABLE PresupuestosDiarios (
+                        PresupuestoId INT IDENTITY(1,1) PRIMARY KEY,
+                        UsuarioId INT NOT NULL,
+                        Fecha DATE NOT NULL,
+                        PresupuestoInicial DECIMAL(10,2) NOT NULL CHECK (PresupuestoInicial >= 0),
+                        Bloqueado BIT NOT NULL DEFAULT 1,
+                        BloquearSobregiro BIT NOT NULL DEFAULT 1,
+                        SoloContarVerificados BIT NOT NULL DEFAULT 0,
+                        CONSTRAINT FK_PresupuestosDiarios_Usuarios FOREIGN KEY (UsuarioId) REFERENCES Usuarios(UsuarioId) ON DELETE CASCADE,
+                        CONSTRAINT UQ_Presupuesto_UsuarioFecha UNIQUE (UsuarioId, Fecha),
+                        CONSTRAINT CK_Presupuesto_RangoFecha CHECK (Fecha >= '2000-01-01' AND Fecha <= CAST(SYSDATETIME() AS DATE))
+                    );
+                END
+
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('MovimientosBilletera') AND name = 'FechaMovimiento')
+                BEGIN
+                    IF OBJECT_ID('MovimientosBilletera', 'U') IS NOT NULL DROP TABLE MovimientosBilletera;
+                    CREATE TABLE MovimientosBilletera (
+                        MovimientoId INT IDENTITY(1,1) PRIMARY KEY,
+                        UsuarioId INT NOT NULL,
+                        CategoriaId INT NOT NULL,
+                        Concepto NVARCHAR(150) NOT NULL,
+                        Monto DECIMAL(10,2) NOT NULL CHECK (Monto > 0),
+                        Verificado BIT NOT NULL DEFAULT 1,
+                        FechaMovimiento DATE NOT NULL DEFAULT CAST(SYSDATETIME() AS DATE),
+                        HoraRegistro TIME(0) NOT NULL DEFAULT CAST(SYSDATETIME() AS TIME(0)),
+                        CONSTRAINT FK_Movimientos_Usuarios FOREIGN KEY (UsuarioId) REFERENCES Usuarios(UsuarioId) ON DELETE CASCADE,
+                        CONSTRAINT FK_Movimientos_Categorias FOREIGN KEY (CategoriaId) REFERENCES CategoriasGasto(CategoriaId),
+                        CONSTRAINT CK_Movimientos_RangoFecha CHECK (FechaMovimiento >= '2000-01-01' AND FechaMovimiento <= CAST(SYSDATETIME() AS DATE))
+                    );
                 END
 
                 IF NOT EXISTS (SELECT 1 FROM NivelesUrgencia)
-                BEGIN
                     INSERT INTO NivelesUrgencia (Nombre, PesoPrioridad) VALUES ('Baja', 1), ('Media', 2), ('Alta', 3);
-                END
 
                 IF NOT EXISTS (SELECT 1 FROM EstadosKanban)
-                BEGIN
-                    INSERT INTO EstadosKanban (Codigo, NombreMostrar) VALUES 
-                    ('todo', 'Por Hacer'), ('doing', 'En Proceso'), ('done', 'Terminado');
-                END
+                    INSERT INTO EstadosKanban (Codigo, NombreMostrar) VALUES ('todo', 'Por Hacer'), ('doing', 'En Proceso'), ('done', 'Terminado');
 
                 IF NOT EXISTS (SELECT 1 FROM DiasSemana)
-                BEGIN
-                    INSERT INTO DiasSemana (DiaId, Nombre) VALUES 
-                    (1, 'Lunes'), (2, 'Martes'), (3, 'Miércoles'), (4, 'Jueves'), (5, 'Viernes');
-                END
+                    INSERT INTO DiasSemana (DiaId, Nombre) VALUES (1, 'Lunes'), (2, 'Martes'), (3, 'Miércoles'), (4, 'Jueves'), (5, 'Viernes');
 
                 IF NOT EXISTS (SELECT 1 FROM Edificios)
-                BEGIN
-                    INSERT INTO Edificios (Nombre) VALUES 
-                    ('Ingenieria'), ('Basicas'), ('Ligeros'), ('Pesados'), ('Culturales'), ('Graduados');
-                END
+                    INSERT INTO Edificios (Nombre) VALUES ('Ingenieria'), ('Basicas'), ('Ligeros'), ('Pesados'), ('Culturales'), ('Graduados');
 
                 IF (SELECT COUNT(*) FROM ColoresTema) < 10
                 BEGIN
@@ -89,8 +121,27 @@ namespace Practica9.Controllers
             cmd.ExecuteNonQuery();
         }
 
+        private static bool ValidarRangoFechaPermitido(DateTime fecha, out string mensajeError)
+        {
+            DateTime minFecha = new(2000, 1, 1);
+            DateTime maxFecha = DateTime.Today;
+
+            if (fecha.Date < minFecha)
+            {
+                mensajeError = "No se permite consultar ni generar presupuestos en fechas anteriores al año 2000.";
+                return false;
+            }
+            if (fecha.Date > maxFecha)
+            {
+                mensajeError = "Solo se permite generar presupuestos desde el año 2000 hasta la fecha actual (no se permiten fechas futuras).";
+                return false;
+            }
+            mensajeError = "";
+            return true;
+        }
+
         // =====================================================================
-        // LOGIN Y REGISTRO (REDIRIGIENDO AL LOGIN TRAS REGISTRAR)
+        // LOGIN Y REGISTRO
         // =====================================================================
         [HttpGet]
         public IActionResult Login()
@@ -203,9 +254,6 @@ namespace Practica9.Controllers
                 }
 
                 string sqlInitAlumno = @"
-                    INSERT INTO ConfiguracionBilletera (UsuarioId, PresupuestoDiario, BloquearSobregiro, SoloContarVerificados)
-                    VALUES (@uid, 200.00, 1, 0);
-
                     INSERT INTO TablerosKanban (Nombre, PropietarioId, EsCompartido)
                     VALUES ('Mi Tablero Escolar', @uid, 0);
 
@@ -221,7 +269,6 @@ namespace Practica9.Controllers
 
                 tx.Commit();
 
-                // No inicia sesión automáticamente; redirige al Login
                 return Ok(new { ok = true, redirectUrl = Url.Action("Login", "Home") });
             }
             catch (SqlException ex)
@@ -272,7 +319,6 @@ namespace Practica9.Controllers
         }
 
         public IActionResult Billetera() => ObtenerUsuarioSesion() == null ? RedirectToAction("Login") : View();
-        public IActionResult HistorialBilletera() => ObtenerUsuarioSesion() == null ? RedirectToAction("Login") : View();
         public IActionResult Kanban() => ObtenerUsuarioSesion() == null ? RedirectToAction("Login") : View();
         public IActionResult Horario() => ObtenerUsuarioSesion() == null ? RedirectToAction("Login") : View();
 
@@ -380,172 +426,397 @@ namespace Practica9.Controllers
         }
 
         // =====================================================================
-        // API: BILLETERA DIARIA + HISTORIAL POR CALENDARIO (SOLO LECTURA)
+        // API: BILLETERA DIARIA POR FECHA + AJUSTES DE PRESUPUESTO + EDICIÓN
         // =====================================================================
         [HttpGet]
-        public IActionResult ObtenerBilletera()
+        public IActionResult ObtenerBilletera(string? fecha)
         {
             int? uid = ObtenerUsuarioSesion();
             if (uid == null) return Unauthorized();
 
-            using var conn = DbSingleton.Instancia.CrearConexion();
-            conn.Open();
-
-            string sqlEnsureWallet = @"
-                IF NOT EXISTS (SELECT 1 FROM ConfiguracionBilletera WHERE UsuarioId = @uid)
-                    INSERT INTO ConfiguracionBilletera (UsuarioId, PresupuestoDiario, BloquearSobregiro, SoloContarVerificados)
-                    VALUES (@uid, 200.00, 1, 0);";
-            using (var cmdE = new SqlCommand(sqlEnsureWallet, conn))
+            DateTime fechaConsulta = DateTime.Today;
+            if (!string.IsNullOrWhiteSpace(fecha) && DateTime.TryParse(fecha, out DateTime parsed))
             {
-                cmdE.Parameters.AddWithValue("@uid", uid.Value);
-                cmdE.ExecuteNonQuery();
+                fechaConsulta = parsed.Date;
             }
 
-            decimal presupuesto = 200;
-            bool bloquear = true, soloVerif = false;
-            DateTime fechaCorte = DateTime.Today;
+            if (!ValidarRangoFechaPermitido(fechaConsulta, out string msgError))
+            {
+                return BadRequest(new { error = msgError, codigo = "ERR_DATE_OUT_OF_BOUNDS" });
+            }
 
-            using (var cmd = new SqlCommand("SELECT PresupuestoDiario, BloquearSobregiro, SoloContarVerificados, FechaInicioDiaActual FROM ConfiguracionBilletera WHERE UsuarioId = @uid", conn))
+            using var conn = DbSingleton.Instancia.CrearConexion();
+            conn.Open();
+            AsegurarCatalogosBase(conn);
+
+            decimal presupuestoInicial = 0;
+            bool presupuestoBloqueado = false;
+            bool bloquearSobregiro = true;
+            bool soloContarVerificados = false;
+
+            string sqlPres = @"
+                SELECT PresupuestoInicial, Bloqueado, BloquearSobregiro, SoloContarVerificados
+                FROM PresupuestosDiarios
+                WHERE UsuarioId = @uid AND Fecha = @fec";
+
+            using (var cmd = new SqlCommand(sqlPres, conn))
             {
                 cmd.Parameters.AddWithValue("@uid", uid.Value);
+                cmd.Parameters.AddWithValue("@fec", fechaConsulta);
                 using var r = cmd.ExecuteReader();
                 if (r.Read())
                 {
-                    presupuesto = (decimal)r["PresupuestoDiario"];
-                    bloquear = (bool)r["BloquearSobregiro"];
-                    soloVerif = (bool)r["SoloContarVerificados"];
-                    fechaCorte = (DateTime)r["FechaInicioDiaActual"];
+                    presupuestoInicial = (decimal)r["PresupuestoInicial"];
+                    presupuestoBloqueado = (bool)r["Bloqueado"];
+                    bloquearSobregiro = (bool)r["BloquearSobregiro"];
+                    soloContarVerificados = (bool)r["SoloContarVerificados"];
                 }
             }
 
             var categorias = new List<object>();
-            using (var cmd = new SqlCommand("SELECT CategoriaId, Nombre FROM CategoriasGasto ORDER BY CategoriaId", conn))
+            using (var cmd = new SqlCommand("SELECT CategoriaId, Nombre, TipoFlujo FROM CategoriasGasto ORDER BY CategoriaId", conn))
             using (var r = cmd.ExecuteReader())
             {
                 while (r.Read())
-                    categorias.Add(new { id = (int)r["CategoriaId"], nombre = r["Nombre"].ToString() });
+                {
+                    categorias.Add(new
+                    {
+                        id = (int)r["CategoriaId"],
+                        nombre = r["Nombre"].ToString(),
+                        tipoFlujo = r["TipoFlujo"].ToString()
+                    });
+                }
             }
 
             var gastos = new List<object>();
             string sqlGastos = @"
-                SELECT m.MovimientoId, m.Concepto, m.Monto, m.Verificado, 
-                       FORMAT(m.FechaHora, 'HH:mm') AS Hora, c.Nombre AS Categoria
+                SELECT m.MovimientoId, m.CategoriaId, m.Concepto, m.Monto, m.Verificado, 
+                       LEFT(CAST(m.HoraRegistro AS VARCHAR), 5) AS Hora, 
+                       c.Nombre AS Categoria, c.TipoFlujo
                 FROM MovimientosBilletera m
                 INNER JOIN CategoriasGasto c ON m.CategoriaId = c.CategoriaId
-                WHERE m.UsuarioId = @uid 
-                  AND m.FechaHora >= @corte
-                  AND CAST(m.FechaHora AS DATE) = CAST(SYSDATETIME() AS DATE)
+                WHERE m.UsuarioId = @uid AND m.FechaMovimiento = @fec
                 ORDER BY m.MovimientoId DESC";
 
             using (var cmd = new SqlCommand(sqlGastos, conn))
             {
                 cmd.Parameters.AddWithValue("@uid", uid.Value);
-                cmd.Parameters.AddWithValue("@corte", fechaCorte);
+                cmd.Parameters.AddWithValue("@fec", fechaConsulta);
                 using var r = cmd.ExecuteReader();
                 while (r.Read())
                 {
                     gastos.Add(new
                     {
                         id = (int)r["MovimientoId"],
+                        categoriaId = (int)r["CategoriaId"],
                         concepto = r["Concepto"].ToString(),
                         monto = (decimal)r["Monto"],
                         verificado = (bool)r["Verificado"],
                         hora = r["Hora"].ToString(),
-                        categoria = r["Categoria"].ToString()
+                        categoria = r["Categoria"].ToString(),
+                        tipoFlujo = r["TipoFlujo"].ToString()
                     });
                 }
             }
 
-            return Json(new { presupuesto, bloquearSobregiro = bloquear, soloContarVerificados = soloVerif, categorias, gastos });
-        }
-
-        [HttpGet]
-        public IActionResult ObtenerGastosPorFecha(string fecha)
-        {
-            int? uid = ObtenerUsuarioSesion();
-            if (uid == null) return Unauthorized();
-
-            if (!DateTime.TryParse(fecha, out DateTime fechaParsed))
-                fechaParsed = DateTime.Today;
-
-            var gastos = new List<object>();
-            using var conn = DbSingleton.Instancia.CrearConexion();
-            conn.Open();
-
-            string sql = @"
-                SELECT m.MovimientoId, m.Concepto, m.Monto, m.Verificado, 
-                       FORMAT(m.FechaHora, 'HH:mm') AS Hora, c.Nombre AS Categoria
-                FROM MovimientosBilletera m
-                INNER JOIN CategoriasGasto c ON m.CategoriaId = c.CategoriaId
-                WHERE m.UsuarioId = @uid AND CAST(m.FechaHora AS DATE) = @fecha
-                ORDER BY m.FechaHora DESC";
-
-            using var cmd = new SqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@uid", uid.Value);
-            cmd.Parameters.AddWithValue("@fecha", fechaParsed.Date);
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
+            return Json(new
             {
-                gastos.Add(new
-                {
-                    id = (int)r["MovimientoId"],
-                    concepto = r["Concepto"].ToString(),
-                    monto = (decimal)r["Monto"],
-                    verificado = (bool)r["Verificado"],
-                    hora = r["Hora"].ToString(),
-                    categoria = r["Categoria"].ToString()
-                });
-            }
-
-            return Json(gastos);
+                fecha = fechaConsulta.ToString("yyyy-MM-dd"),
+                presupuestoInicial,
+                presupuestoBloqueado,
+                bloquearSobregiro,
+                soloContarVerificados,
+                categorias,
+                gastos
+            });
         }
 
         [HttpPost]
-        public IActionResult AgregarGasto([FromBody] GastoDto dto)
+        public IActionResult GuardarPresupuestoInicial([FromBody] GuardarPresupuestoDiaDto dto)
         {
             int? uid = ObtenerUsuarioSesion();
             if (uid == null) return Unauthorized();
 
+            if (!DateTime.TryParse(dto.Fecha, out DateTime fechaParsed))
+                return BadRequest(new { error = "Fecha inválida.", codigo = "ERR_INVALID_DATE" });
+
+            if (!ValidarRangoFechaPermitido(fechaParsed, out string msgError))
+                return BadRequest(new { error = msgError, codigo = "ERR_DATE_OUT_OF_BOUNDS" });
+
+            if (dto.PresupuestoInicial <= 0)
+                return BadRequest(new { error = "El presupuesto inicial debe ser mayor a $0.00.", codigo = "ERR_BUDGET_ZERO" });
+
+            using var conn = DbSingleton.Instancia.CrearConexion();
+            conn.Open();
+
+            // Verificar si ya estaba bloqueado para esa fecha
+            using (var cmdCheck = new SqlCommand("SELECT Bloqueado FROM PresupuestosDiarios WHERE UsuarioId = @uid AND Fecha = @fec", conn))
+            {
+                cmdCheck.Parameters.AddWithValue("@uid", uid.Value);
+                cmdCheck.Parameters.AddWithValue("@fec", fechaParsed.Date);
+                var res = cmdCheck.ExecuteScalar();
+                if (res != null && (bool)res)
+                {
+                    return BadRequest(new { error = "El presupuesto inicial de esta fecha ya fue guardado y bloqueado. Usa el apartado de Agregar o Disminuir presupuesto.", codigo = "ERR_BUDGET_LOCKED" });
+                }
+            }
+
+            string sql = @"
+                IF EXISTS (SELECT 1 FROM PresupuestosDiarios WHERE UsuarioId = @uid AND Fecha = @fec)
+                    UPDATE PresupuestosDiarios SET PresupuestoInicial = @pres, Bloqueado = 1 WHERE UsuarioId = @uid AND Fecha = @fec;
+                ELSE
+                    INSERT INTO PresupuestosDiarios (UsuarioId, Fecha, PresupuestoInicial, Bloqueado, BloquearSobregiro, SoloContarVerificados)
+                    VALUES (@uid, @fec, @pres, 1, 1, 0);";
+
+            using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@uid", uid.Value);
+            cmd.Parameters.AddWithValue("@fec", fechaParsed.Date);
+            cmd.Parameters.AddWithValue("@pres", dto.PresupuestoInicial);
+            cmd.ExecuteNonQuery();
+
+            return Ok(new { ok = true });
+        }
+
+        [HttpPost]
+        public IActionResult ActualizarSwitchesBilletera([FromBody] SwitchesBilleteraDto dto)
+        {
+            int? uid = ObtenerUsuarioSesion();
+            if (uid == null) return Unauthorized();
+
+            if (!DateTime.TryParse(dto.Fecha, out DateTime fechaParsed))
+                return BadRequest(new { error = "Fecha inválida.", codigo = "ERR_INVALID_DATE" });
+
+            using var conn = DbSingleton.Instancia.CrearConexion();
+            conn.Open();
+            string sql = @"
+                UPDATE PresupuestosDiarios 
+                SET BloquearSobregiro = @bloq, SoloContarVerificados = @solo
+                WHERE UsuarioId = @uid AND Fecha = @fec";
+            using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@bloq", dto.BloquearSobregiro);
+            cmd.Parameters.AddWithValue("@solo", dto.SoloContarVerificados);
+            cmd.Parameters.AddWithValue("@uid", uid.Value);
+            cmd.Parameters.AddWithValue("@fec", fechaParsed.Date);
+            cmd.ExecuteNonQuery();
+            return Ok(new { ok = true });
+        }
+
+        [HttpPost]
+        public IActionResult AgregarMovimientoBilletera([FromBody] MovimientoDiaDto dto)
+        {
+            int? uid = ObtenerUsuarioSesion();
+            if (uid == null) return Unauthorized();
+
+            if (!DateTime.TryParse(dto.Fecha, out DateTime fechaParsed))
+                return BadRequest(new { error = "Fecha inválida.", codigo = "ERR_INVALID_DATE" });
+
+            if (!ValidarRangoFechaPermitido(fechaParsed, out string msgError))
+                return BadRequest(new { error = msgError, codigo = "ERR_DATE_OUT_OF_BOUNDS" });
+
+            if (string.IsNullOrWhiteSpace(dto.Concepto))
+                return BadRequest(new { error = "El nombre/concepto del movimiento es obligatorio.", codigo = "ERR_EMPTY_CONCEPT" });
+
+            if (dto.Monto <= 0)
+                return BadRequest(new { error = "El monto debe ser mayor a $0.00.", codigo = "ERR_INVALID_AMOUNT" });
+
+            using var conn = DbSingleton.Instancia.CrearConexion();
+            conn.Open();
+            using var tx = conn.BeginTransaction();
+
             try
             {
-                using var conn = DbSingleton.Instancia.CrearConexion();
-                conn.Open();
-                using var cmd = new SqlCommand("sp_RegistrarGastoBilletera", conn);
-                cmd.CommandType = CommandType.StoredProcedure;
-                cmd.Parameters.AddWithValue("@UsuarioId", uid.Value);
-                cmd.Parameters.AddWithValue("@CategoriaId", dto.CategoriaId);
-                cmd.Parameters.AddWithValue("@Concepto", dto.Concepto);
-                cmd.Parameters.AddWithValue("@Monto", dto.Monto);
-                cmd.Parameters.AddWithValue("@Verificado", dto.Verificado);
-                cmd.ExecuteNonQuery();
+                decimal? presInicial = null;
+                bool bloquear = true;
 
+                using (var cmdPres = new SqlCommand("SELECT PresupuestoInicial, BloquearSobregiro FROM PresupuestosDiarios WHERE UsuarioId = @uid AND Fecha = @fec", conn, tx))
+                {
+                    cmdPres.Parameters.AddWithValue("@uid", uid.Value);
+                    cmdPres.Parameters.AddWithValue("@fec", fechaParsed.Date);
+                    using var r = cmdPres.ExecuteReader();
+                    if (r.Read())
+                    {
+                        presInicial = (decimal)r["PresupuestoInicial"];
+                        bloquear = (bool)r["BloquearSobregiro"];
+                    }
+                }
+
+                if (presInicial == null)
+                {
+                    tx.Rollback();
+                    return BadRequest(new { error = "Primero debes guardar el presupuesto inicial de esta fecha.", codigo = "ERR_NO_INITIAL_BUDGET" });
+                }
+
+                string tipoFlujo = "GASTO";
+                using (var cmdCat = new SqlCommand("SELECT TipoFlujo FROM CategoriasGasto WHERE CategoriaId = @cid", conn, tx))
+                {
+                    cmdCat.Parameters.AddWithValue("@cid", dto.CategoriaId);
+                    var res = cmdCat.ExecuteScalar();
+                    if (res != null) tipoFlujo = res.ToString()!;
+                }
+
+                decimal aumentos = 0, disminuciones = 0, gastos = 0;
+                string sqlSum = @"
+                    SELECT 
+                        ISNULL(SUM(CASE WHEN c.TipoFlujo = 'AUMENTO' THEN m.Monto ELSE 0 END), 0) AS Aumentos,
+                        ISNULL(SUM(CASE WHEN c.TipoFlujo = 'DISMINUCION' THEN m.Monto ELSE 0 END), 0) AS Disminuciones,
+                        ISNULL(SUM(CASE WHEN c.TipoFlujo = 'GASTO' THEN m.Monto ELSE 0 END), 0) AS Gastos
+                    FROM MovimientosBilletera m
+                    INNER JOIN CategoriasGasto c ON m.CategoriaId = c.CategoriaId
+                    WHERE m.UsuarioId = @uid AND m.FechaMovimiento = @fec";
+
+                using (var cmdSum = new SqlCommand(sqlSum, conn, tx))
+                {
+                    cmdSum.Parameters.AddWithValue("@uid", uid.Value);
+                    cmdSum.Parameters.AddWithValue("@fec", fechaParsed.Date);
+                    using var r = cmdSum.ExecuteReader();
+                    if (r.Read())
+                    {
+                        aumentos = (decimal)r["Aumentos"];
+                        disminuciones = (decimal)r["Disminuciones"];
+                        gastos = (decimal)r["Gastos"];
+                    }
+                }
+
+                decimal saldoDisponible = (presInicial.Value + aumentos - disminuciones) - gastos;
+
+                if (bloquear && (tipoFlujo == "GASTO" || tipoFlujo == "DISMINUCION") && dto.Monto > saldoDisponible)
+                {
+                    tx.Rollback();
+                    return BadRequest(new
+                    {
+                        error = $"Fondos insuficientes. Intentas descontar ${dto.Monto:F2} pero tu saldo disponible del día es ${saldoDisponible:F2}.",
+                        codigo = "ERR_OVERDRAFT_SQL"
+                    });
+                }
+
+                string sqlInsert = @"
+                    INSERT INTO MovimientosBilletera (UsuarioId, CategoriaId, Concepto, Monto, Verificado, FechaMovimiento)
+                    VALUES (@uid, @cid, @con, @mon, @ver, @fec)";
+
+                using (var cmdIns = new SqlCommand(sqlInsert, conn, tx))
+                {
+                    cmdIns.Parameters.AddWithValue("@uid", uid.Value);
+                    cmdIns.Parameters.AddWithValue("@cid", dto.CategoriaId);
+                    cmdIns.Parameters.AddWithValue("@con", dto.Concepto.Trim());
+                    cmdIns.Parameters.AddWithValue("@mon", dto.Monto);
+                    cmdIns.Parameters.AddWithValue("@ver", dto.Verificado);
+                    cmdIns.Parameters.AddWithValue("@fec", fechaParsed.Date);
+                    cmdIns.ExecuteNonQuery();
+                }
+
+                tx.Commit();
                 return Ok(new { ok = true });
             }
             catch (SqlException ex)
             {
+                tx.Rollback();
                 return BadRequest(new { error = ex.Message, codigo = $"SQL_ERR_{ex.Number}" });
             }
         }
 
         [HttpPost]
-        public IActionResult ActualizarConfigBilletera([FromBody] ConfigBilleteraDto dto)
+        public IActionResult EditarMovimientoBilletera([FromBody] EditarMovimientoDto dto)
         {
             int? uid = ObtenerUsuarioSesion();
             if (uid == null) return Unauthorized();
 
+            if (string.IsNullOrWhiteSpace(dto.Concepto))
+                return BadRequest(new { error = "El nombre del movimiento no puede estar vacío.", codigo = "ERR_EMPTY_NAME" });
+
+            if (dto.Monto <= 0)
+                return BadRequest(new { error = "El presupuesto/monto del movimiento debe ser mayor a $0.00.", codigo = "ERR_INVALID_AMOUNT" });
+
             using var conn = DbSingleton.Instancia.CrearConexion();
             conn.Open();
-            string sql = @"
-                UPDATE ConfiguracionBilletera 
-                SET PresupuestoDiario = @pres, BloquearSobregiro = @bloq, SoloContarVerificados = @solo
-                WHERE UsuarioId = @uid";
-            using var cmd = new SqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@pres", dto.Presupuesto);
-            cmd.Parameters.AddWithValue("@bloq", dto.BloquearSobregiro);
-            cmd.Parameters.AddWithValue("@solo", dto.SoloContarVerificados);
-            cmd.Parameters.AddWithValue("@uid", uid.Value);
-            cmd.ExecuteNonQuery();
-            return Ok();
+            using var tx = conn.BeginTransaction();
+
+            try
+            {
+                DateTime? fechaMov = null;
+                using (var cmdFec = new SqlCommand("SELECT FechaMovimiento FROM MovimientosBilletera WHERE MovimientoId = @id AND UsuarioId = @uid", conn, tx))
+                {
+                    cmdFec.Parameters.AddWithValue("@id", dto.Id);
+                    cmdFec.Parameters.AddWithValue("@uid", uid.Value);
+                    var res = cmdFec.ExecuteScalar();
+                    if (res != null) fechaMov = (DateTime)res;
+                }
+
+                if (fechaMov == null)
+                {
+                    tx.Rollback();
+                    return BadRequest(new { error = "El movimiento no fue encontrado.", codigo = "ERR_MOV_NOT_FOUND" });
+                }
+
+                using (var cmdUpd = new SqlCommand(@"
+                    UPDATE MovimientosBilletera 
+                    SET CategoriaId = @cid, Concepto = @con, Monto = @mon, Verificado = @ver
+                    WHERE MovimientoId = @id AND UsuarioId = @uid", conn, tx))
+                {
+                    cmdUpd.Parameters.AddWithValue("@cid", dto.CategoriaId);
+                    cmdUpd.Parameters.AddWithValue("@con", dto.Concepto.Trim());
+                    cmdUpd.Parameters.AddWithValue("@mon", dto.Monto);
+                    cmdUpd.Parameters.AddWithValue("@ver", dto.Verificado);
+                    cmdUpd.Parameters.AddWithValue("@id", dto.Id);
+                    cmdUpd.Parameters.AddWithValue("@uid", uid.Value);
+                    cmdUpd.ExecuteNonQuery();
+                }
+
+                // Verificar que no viole el bloqueo de sobregiro de ese día
+                decimal presInicial = 0;
+                bool bloquear = true;
+                using (var cmdP = new SqlCommand("SELECT PresupuestoInicial, BloquearSobregiro FROM PresupuestosDiarios WHERE UsuarioId = @uid AND Fecha = @fec", conn, tx))
+                {
+                    cmdP.Parameters.AddWithValue("@uid", uid.Value);
+                    cmdP.Parameters.AddWithValue("@fec", fechaMov.Value.Date);
+                    using var r = cmdP.ExecuteReader();
+                    if (r.Read())
+                    {
+                        presInicial = (decimal)r["PresupuestoInicial"];
+                        bloquear = (bool)r["BloquearSobregiro"];
+                    }
+                }
+
+                decimal aumentos = 0, disminuciones = 0, gastos = 0;
+                string sqlSum = @"
+                    SELECT 
+                        ISNULL(SUM(CASE WHEN c.TipoFlujo = 'AUMENTO' THEN m.Monto ELSE 0 END), 0) AS Aumentos,
+                        ISNULL(SUM(CASE WHEN c.TipoFlujo = 'DISMINUCION' THEN m.Monto ELSE 0 END), 0) AS Disminuciones,
+                        ISNULL(SUM(CASE WHEN c.TipoFlujo = 'GASTO' THEN m.Monto ELSE 0 END), 0) AS Gastos
+                    FROM MovimientosBilletera m
+                    INNER JOIN CategoriasGasto c ON m.CategoriaId = c.CategoriaId
+                    WHERE m.UsuarioId = @uid AND m.FechaMovimiento = @fec";
+
+                using (var cmdSum = new SqlCommand(sqlSum, conn, tx))
+                {
+                    cmdSum.Parameters.AddWithValue("@uid", uid.Value);
+                    cmdSum.Parameters.AddWithValue("@fec", fechaMov.Value.Date);
+                    using var r = cmdSum.ExecuteReader();
+                    if (r.Read())
+                    {
+                        aumentos = (decimal)r["Aumentos"];
+                        disminuciones = (decimal)r["Disminuciones"];
+                        gastos = (decimal)r["Gastos"];
+                    }
+                }
+
+                if (bloquear && ((presInicial + aumentos - disminuciones) - gastos) < 0)
+                {
+                    tx.Rollback();
+                    return BadRequest(new
+                    {
+                        error = "No se puede guardar la edición porque excede el presupuesto disponible del día y el bloqueo de sobregiros está activo.",
+                        codigo = "ERR_EDIT_OVERDRAFT"
+                    });
+                }
+
+                tx.Commit();
+                return Ok(new { ok = true });
+            }
+            catch (SqlException ex)
+            {
+                tx.Rollback();
+                return BadRequest(new { error = ex.Message, codigo = $"SQL_ERR_{ex.Number}" });
+            }
         }
 
         [HttpPost]
@@ -573,21 +844,6 @@ namespace Practica9.Controllers
             conn.Open();
             using var cmd = new SqlCommand("DELETE FROM MovimientosBilletera WHERE MovimientoId = @id AND UsuarioId = @uid", conn);
             cmd.Parameters.AddWithValue("@id", id);
-            cmd.Parameters.AddWithValue("@uid", uid.Value);
-            cmd.ExecuteNonQuery();
-            return Ok();
-        }
-
-        // Genera un nuevo ciclo/día sin borrar el historial para el calendario
-        [HttpPost]
-        public IActionResult GenerarNuevoDia()
-        {
-            int? uid = ObtenerUsuarioSesion();
-            if (uid == null) return Unauthorized();
-
-            using var conn = DbSingleton.Instancia.CrearConexion();
-            conn.Open();
-            using var cmd = new SqlCommand("UPDATE ConfiguracionBilletera SET FechaInicioDiaActual = SYSDATETIME() WHERE UsuarioId = @uid", conn);
             cmd.Parameters.AddWithValue("@uid", uid.Value);
             cmd.ExecuteNonQuery();
             return Ok();
@@ -820,7 +1076,7 @@ namespace Practica9.Controllers
         }
 
         // =====================================================================
-        // API: HORARIO (7 AM A 10 PM, HORAS/MINUTOS MANUALES, EDIFICIOS, LAB/SALÓN)
+        // API: HORARIO
         // =====================================================================
         [HttpGet]
         public IActionResult ObtenerHorario()
@@ -1009,8 +1265,24 @@ namespace Practica9.Controllers
         public string Password { get; set; } = "";
     }
     public class NotifDto { public string? Titulo { get; set; } public string? Mensaje { get; set; } public string? Tipo { get; set; } }
-    public class GastoDto { public int CategoriaId { get; set; } public string Concepto { get; set; } = ""; public decimal Monto { get; set; } public bool Verificado { get; set; } }
-    public class ConfigBilleteraDto { public decimal Presupuesto { get; set; } public bool BloquearSobregiro { get; set; } public bool SoloContarVerificados { get; set; } }
+    public class GuardarPresupuestoDiaDto { public string Fecha { get; set; } = ""; public decimal PresupuestoInicial { get; set; } }
+    public class SwitchesBilleteraDto { public string Fecha { get; set; } = ""; public bool BloquearSobregiro { get; set; } public bool SoloContarVerificados { get; set; } }
+    public class MovimientoDiaDto
+    {
+        public string Fecha { get; set; } = "";
+        public int CategoriaId { get; set; }
+        public string Concepto { get; set; } = "";
+        public decimal Monto { get; set; }
+        public bool Verificado { get; set; }
+    }
+    public class EditarMovimientoDto
+    {
+        public int Id { get; set; }
+        public int CategoriaId { get; set; }
+        public string Concepto { get; set; } = "";
+        public decimal Monto { get; set; }
+        public bool Verificado { get; set; }
+    }
     public class KanbanTareaVm { public int id { get; set; } public string titulo { get; set; } = ""; public string materia { get; set; } = ""; public string urgencia { get; set; } = ""; public string estado { get; set; } = ""; public string? imagen { get; set; } public List<object> subtareas { get; set; } = new(); }
     public class AsignarHorarioDto
     {

@@ -12,9 +12,9 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        const HORAS_FILAS = Array.from({ length: 15 }, (_, i) => i + 7); // 7 a 21 (bloques hasta las 22:00)
-        const OPCIONES_HORAS = Array.from({ length: 16 }, (_, i) => i + 7); // 7 a 22 hrs
-        const OPCIONES_MINUTOS = Array.from({ length: 60 }, (_, i) => i);   // 0 a 59 mins
+        const HORAS_FILAS = Array.from({ length: 15 }, (_, i) => i + 7);
+        const OPCIONES_HORAS = Array.from({ length: 16 }, (_, i) => i + 7);
+        const OPCIONES_MINUTOS = Array.from({ length: 60 }, (_, i) => i);
 
         function HorarioApp() {
             const [dias, setDias] = useState([]);
@@ -156,14 +156,9 @@
 
             return (
                 <div>
-                    <div className="d-flex justify-content-between align-items-center mb-4">
-                        <div>
-                            <h3 className="fw-semibold mb-0">Armador Visual de Horarios (07:00 - 22:00 hrs)</h3>
-                            <p className="text-muted small mb-0">Haz clic sobre cualquier materia en la tabla para desplegar el panel de detalles</p>
-                        </div>
-                        <button onClick={() => window.print()} className="btn btn-outline-dark btn-sm rounded-3">
-                            <i className="bi bi-printer me-1"></i> Imprimir / PDF
-                        </button>
+                    <div className="mb-4">
+                        <h3 className="fw-semibold mb-0">Armador Visual de Horarios (07:00 - 22:00 hrs)</h3>
+                        <p className="text-muted small mb-0">Haz clic sobre cualquier materia en la tabla para desplegar el panel de detalles</p>
                     </div>
 
                     <form onSubmit={guardarClase} className="card-minimal p-4 mb-4">
@@ -270,7 +265,6 @@
                         </div>
                     </form>
 
-                    {/* TABLA DE HORARIO DE 07:00 A 22:00 */}
                     <div className="card-minimal overflow-hidden">
                         <div className="table-responsive">
                             <table className="table table-bordered mb-0 align-middle text-center" style={{ tableLayout: 'fixed' }}>
@@ -287,7 +281,6 @@
                                             <tr key={horaFila}>
                                                 <td className="small text-muted fw-medium bg-light">{etiquetaFila}</td>
                                                 {dias.map(d => {
-                                                    // Mostrar las clases que cubren esta hora en este día
                                                     const bloquesEnHora = clases.filter(c => {
                                                         if (c.diaId !== d.id) return false;
                                                         const iniMin = c.horaInicioInt * 60 + c.minInicioInt;
@@ -329,7 +322,6 @@
                         </div>
                     </div>
 
-                    {/* PANEL EMERGENTE LATERAL DE DETALLES (OFFCANVAS) */}
                     <div className="offcanvas offcanvas-end" tabIndex="-1" id="panelDetalleHorario">
                         <div className="offcanvas-header border-bottom">
                             <h6 className="offcanvas-title fw-semibold mb-0">

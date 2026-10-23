@@ -148,3 +148,11 @@ body {
         transform: scale(1.02);
         box-shadow: 0 4px 10px rgba(0,0,0,0.08);
     }
+.movement-row-item {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+    .movement-row-item:hover {
+        background-color: #f8f9fa;
+    }

@@ -4,33 +4,59 @@
 
 <div id="app-billetera" v-cloak class="row justify-content-center">
     <div class="col-lg-8">
-        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+        <!-- Encabezado con Casilla de Fecha (Calendario Desplegable) -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
             <div>
                 <h3 class="fw-semibold mb-0">Billetera Diaria</h3>
+                <span class="text-muted small">Mostrando presupuesto y movimientos del día: <strong>{{ fechaSeleccionada }}</strong></span>
             </div>
-            <div class="d-flex gap-2">
-                <a asp-action="HistorialBilletera" class="btn btn-light border btn-sm rounded-3">
-                    <i class="bi bi-calendar3 me-1"></i> Ver Historial por Calendario
-                </a>
-                <button @@click="generarNuevoDia" class="btn btn-outline-dark btn-sm rounded-3">
-                    <i class="bi bi-sunrise me-1"></i> Generar Nuevo Día
-                </button>
+            <div class="d-flex align-items-center gap-2">
+                <label class="small text-muted fw-medium mb-0 text-nowrap">
+                    <i class="bi bi-calendar3 me-1"></i>Fecha:
+                </label>
+                <input type="date"
+                       v-model="fechaSeleccionada"
+                       min="2000-01-01"
+                       :max="fechaHoy"
+                       @@change="cambiarFecha"
+                       class="form-control form-control-sm"
+                       style="width: 165px;">
             </div>
         </div>
 
+        <!-- Tarjeta de Presupuesto Inicial (Se bloquea al Guardar) -->
         <div class="card-minimal p-4 mb-4">
             <div class="row align-items-center g-3">
                 <div class="col-sm-6">
-                    <label class="text-muted small fw-medium mb-1">Presupuesto inicial del día ($)</label>
-                    <div class="input-group">
-                        <input type="number" v-model.number="presupuesto" class="form-control form-control-lg fw-semibold">
-                        <button @@click="guardarConfigSql" class="btn btn-outline-dark">Guardar</button>
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="text-muted small fw-medium">Presupuesto inicial del día ($)</label>
+                        <span v-if="presupuestoBloqueado" class="badge bg-dark-subtle text-dark" style="font-size: 0.7rem;">
+                            <i class="bi bi-lock-fill me-1"></i>Fijado
+                        </span>
                     </div>
+                    <div class="input-group">
+                        <input type="number"
+                               v-model.number="presupuestoInicial"
+                               :disabled="presupuestoBloqueado"
+                               class="form-control form-control-lg fw-semibold"
+                               placeholder="0.00">
+                        <button @@click="guardarPresupuestoInicial"
+                                :disabled="presupuestoBloqueado"
+                                class="btn btn-dark-minimal">
+                            Guardar
+                        </button>
+                    </div>
+                    <small v-if="!presupuestoBloqueado" class="text-muted d-block mt-1" style="font-size: 0.76rem;">
+                        Establece el presupuesto de este día y presiona Guardar.
+                    </small>
                 </div>
                 <div class="col-sm-6 text-sm-end">
-                    <span class="text-muted small d-block">Saldo Disponible</span>
+                    <span class="text-muted small d-block">Saldo Disponible del Día</span>
                     <h2 class="fw-bold mb-0" :class="colorTextoSaldo">${{ saldoDisponible.toFixed(2) }}</h2>
-                    <small class="text-muted">Gastado hoy: ${{ totalGastado.toFixed(2) }}</small>
+                    <small class="text-muted d-block">
+                        Presupuesto total ajustado: <strong>${{ presupuestoEfectivo.toFixed(2) }}</strong>
+                        &bull; Gastado: <strong>${{ totalGastado.toFixed(2) }}</strong>
+                    </small>
                 </div>
             </div>
 
@@ -40,75 +66,188 @@
 
             <div class="d-flex flex-wrap gap-4 pt-2 border-top small">
                 <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="chkEstricto" v-model="bloquearSobregiro" @@change="guardarConfigSql">
+                    <input class="form-check-input" type="checkbox" id="chkEstricto" v-model="bloquearSobregiro" :disabled="!presupuestoBloqueado" @@change="guardarSwitches">
                     <label class="form-check-label text-muted" for="chkEstricto">
                         Bloquear gastos que excedan mi presupuesto disponible
                     </label>
                 </div>
                 <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="chkSoloVerif" v-model="soloContarVerificados" @@change="guardarConfigSql">
+                    <input class="form-check-input" type="checkbox" id="chkSoloVerif" v-model="soloContarVerificados" :disabled="!presupuestoBloqueado" @@change="guardarSwitches">
                     <label class="form-check-label text-muted" for="chkSoloVerif">
-                        Descontar solo gastos con Check verificado
+                        Descontar solo movimientos con Check verificado
                     </label>
                 </div>
             </div>
         </div>
 
-        <div class="card-minimal p-4 mb-4">
-            <h6 class="fw-semibold mb-3">Registrar movimiento</h6>
+        <!-- Apartado para Agregar o Disminuir más Presupuesto (Aparece al bloquear el presupuesto inicial) -->
+        <div class="card-minimal p-4 mb-4 bg-light border" v-if="presupuestoBloqueado">
+            <h6 class="fw-semibold mb-1">
+                <i class="bi bi-sliders me-2"></i>Agregar o Disminuir Presupuesto del Día
+            </h6>
+            <p class="text-muted small mb-3">Cualquier aumento o reducción se registrará en los movimientos del día.</p>
             <div class="row g-2 align-items-center">
                 <div class="col-md-4">
-                    <input type="text" v-model="nuevoConcepto" @@keyup.enter="agregarGasto" class="form-control" placeholder="¿En qué gastaste?">
+                    <select v-model="ajusteTipo" class="form-select">
+                        <option value="AUMENTO">➕ Agregar más presupuesto</option>
+                        <option value="DISMINUCION">➖ Disminuir presupuesto</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <input type="text" v-model="ajusteConcepto" @@keyup.enter="guardarAjustePresupuesto" class="form-control" placeholder="Motivo (Ej. Dinero extra, Ajuste)">
+                </div>
+                <div class="col-md-2">
+                    <input type="number" v-model.number="ajusteMonto" @@keyup.enter="guardarAjustePresupuesto" class="form-control" placeholder="Monto $">
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button @@click="guardarAjustePresupuesto" class="btn-dark-minimal">Guardar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Formulario para Registrar Gasto Normal -->
+        <div class="card-minimal p-4 mb-4" :class="{ 'opacity-50': !presupuestoBloqueado }">
+            <h6 class="fw-semibold mb-3">Registrar gasto del día</h6>
+            <div class="row g-2 align-items-center">
+                <div class="col-md-4">
+                    <input type="text" v-model="nuevoConcepto" :disabled="!presupuestoBloqueado" @@keyup.enter="agregarGasto" class="form-control" placeholder="¿En qué gastaste?">
                 </div>
                 <div class="col-md-3">
-                    <select v-model="nuevaCategoriaId" class="form-select">
-                        <option v-for="cat in categorias" :key="cat.id" :value="cat.id">{{ cat.nombre }}</option>
+                    <select v-model="nuevaCategoriaId" :disabled="!presupuestoBloqueado" class="form-select">
+                        <option v-for="cat in categoriasGastoNormal" :key="cat.id" :value="cat.id">{{ cat.nombre }}</option>
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <input type="number" v-model.number="nuevoMonto" @@keyup.enter="agregarGasto" class="form-control" placeholder="Monto $">
+                    <input type="number" v-model.number="nuevoMonto" :disabled="!presupuestoBloqueado" @@keyup.enter="agregarGasto" class="form-control" placeholder="Monto $">
                 </div>
                 <div class="col-md-3 d-grid">
-                    <button @@click="agregarGasto" class="btn-dark-minimal">Guardar</button>
+                    <button @@click="agregarGasto" :disabled="!presupuestoBloqueado" class="btn-dark-minimal">Guardar</button>
                 </div>
             </div>
             <div class="form-check mt-2">
-                <input class="form-check-input" type="checkbox" id="chkPagadoYa" v-model="nuevoVerificado">
+                <input class="form-check-input" type="checkbox" id="chkPagadoYa" v-model="nuevoVerificado" :disabled="!presupuestoBloqueado">
                 <label class="form-check-label small text-muted" for="chkPagadoYa">
                     Marcar con check de "Ya pagado / Verificado" al guardar
                 </label>
             </div>
         </div>
 
+        <!-- Cuadro de Movimientos del Día (Seleccionables para abrir Panel Emergente) -->
         <div class="card-minimal p-4">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h6 class="fw-semibold mb-0">Movimientos del día actual ({{ gastos.length }})</h6>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                    <h6 class="fw-semibold mb-0">Movimientos del día ({{ gastos.length }})</h6>
+                    <small class="text-muted" style="font-size: 0.78rem;">Haz clic sobre cualquier movimiento para editarlo o eliminarlo</small>
+                </div>
                 <span class="small text-muted">Verificados: {{ gastos.filter(g => g.verificado).length }}/{{ gastos.length }}</span>
             </div>
+
             <div v-if="gastos.length === 0" class="text-center text-muted py-4 small">
-                No hay movimientos registrados en el día actual.
+                No hay movimientos registrados en esta fecha.
             </div>
-            <ul class="list-group list-group-flush" v-else>
-                <li v-for="gasto in gastos" :key="gasto.id" class="list-group-item px-0 py-3 d-flex justify-content-between align-items-center border-bottom">
+
+            <ul class="list-group list-group-flush mt-2" v-else>
+                <li v-for="gasto in gastos"
+                    :key="gasto.id"
+                    @@click="abrirDetalleMovimiento(gasto)"
+                    class="list-group-item px-2 py-3 d-flex justify-content-between align-items-center border-bottom movement-row-item rounded-3">
                     <div class="d-flex align-items-center gap-3">
-                        <input type="checkbox" class="form-check-input fs-5 mt-0" :checked="gasto.verificado" @@change="toggleVerificado(gasto)">
+                        <input type="checkbox"
+                               class="form-check-input fs-5 mt-0"
+                               :checked="gasto.verificado"
+                               @@click.stop
+                               @@change="toggleVerificado(gasto)">
                         <div :class="{ 'opacity-50': !gasto.verificado && soloContarVerificados }">
                             <span class="fw-medium d-block">
                                 {{ gasto.concepto }}
-                                <span v-if="gasto.verificado" class="badge bg-success-subtle text-success ms-1" style="font-size: 0.65rem;">Pagado</span>
+                                <span v-if="gasto.verificado" class="badge bg-success-subtle text-success ms-1" style="font-size: 0.65rem;">Verificado</span>
                                 <span v-else class="badge bg-secondary-subtle text-secondary ms-1" style="font-size: 0.65rem;">Pendiente</span>
                             </span>
                             <span class="text-muted small">{{ gasto.categoria }} &bull; {{ gasto.hora }}</span>
                         </div>
                     </div>
-                    <div class="d-flex align-items-center gap-3">
-                        <span class="fw-semibold text-danger">-${{ gasto.monto.toFixed(2) }}</span>
-                        <button @@click="eliminarGasto(gasto)" class="btn btn-sm text-muted p-0 border-0">
-                            <i class="bi bi-trash"></i>
-                        </button>
+                    <div class="d-flex align-items-center gap-2">
+                        <span v-if="gasto.tipoFlujo === 'AUMENTO'" class="fw-semibold text-success">
+                            +${{ gasto.monto.toFixed(2) }}
+                        </span>
+                        <span v-else-if="gasto.tipoFlujo === 'DISMINUCION'" class="fw-semibold text-warning-emphasis">
+                            -${{ gasto.monto.toFixed(2) }}
+                        </span>
+                        <span v-else class="fw-semibold text-danger">
+                            -${{ gasto.monto.toFixed(2) }}
+                        </span>
+                        <i class="bi bi-chevron-right text-muted small ms-1"></i>
                     </div>
                 </li>
             </ul>
+        </div>
+    </div>
+
+    <!-- PANEL EMERGENTE LATERAL PARA EDITAR / ELIMINAR MOVIMIENTO (OFFCANVAS) -->
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="panelDetalleMovimiento">
+        <div class="offcanvas-header border-bottom">
+            <h6 class="offcanvas-title fw-semibold mb-0">
+                <i class="bi bi-pencil-square me-2"></i>Detalle y Edición del Movimiento
+            </h6>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+        </div>
+        <div class="offcanvas-body p-4">
+            <div v-if="movimientoEditando">
+                <div class="mb-3">
+                    <label class="form-label small text-muted fw-medium">Nombre del Movimiento</label>
+                    <input type="text" v-model="movimientoEditando.concepto" class="form-control">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small text-muted fw-medium">Presupuesto / Monto del Movimiento ($)</label>
+                    <input type="number" step="0.01" v-model.number="movimientoEditando.monto" class="form-control fw-semibold">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small text-muted fw-medium">Tipo de Movimiento</label>
+                    <select v-model="movimientoEditando.categoriaId" class="form-select">
+                        <option v-for="cat in categorias" :key="cat.id" :value="cat.id">
+                            {{ cat.nombre }} ({{ etiquetaFlujo(cat.tipoFlujo) }})
+                        </option>
+                    </select>
+                </div>
+
+                <div class="form-check mb-4">
+                    <input class="form-check-input" type="checkbox" id="chkEditVerif" v-model="movimientoEditando.verificado">
+                    <label class="form-check-label small text-muted" for="chkEditVerif">
+                        Movimiento verificado / liquidado
+                    </label>
+                </div>
+
+                <div class="d-grid gap-2 mb-4">
+                    <button @@click="guardarEdicionMovimiento" class="btn-dark-minimal py-2">
+                        Guardar
+                    </button>
+                </div>
+
+                <div class="border-top pt-3">
+                    <button v-if="!confirmandoEliminar"
+                            @@click="confirmandoEliminar = true"
+                            class="btn btn-outline-danger w-100 rounded-3">
+                        <i class="bi bi-trash me-1"></i> Eliminar Movimiento
+                    </button>
+
+                    <!-- Confirmación gráfica de eliminación -->
+                    <div v-else class="p-3 bg-danger-subtle rounded-3 border border-danger-subtle text-center">
+                        <p class="small fw-semibold text-danger mb-2">
+                            ¿Estás seguro de que deseas eliminar este movimiento?
+                        </p>
+                        <div class="d-flex gap-2 justify-content-center">
+                            <button @@click="confirmarEliminarMovimiento" class="btn btn-danger btn-sm px-3">
+                                Sí, eliminar
+                            </button>
+                            <button @@click="confirmandoEliminar = false" class="btn btn-light border btn-sm px-3">
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -118,32 +257,68 @@
     <script>
         const { createApp } = Vue;
 
+        function obtenerFechaLocalHoy() {
+            const hoy = new Date();
+            const yyyy = hoy.getFullYear();
+            const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+            const dd = String(hoy.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
         createApp({
             data() {
+                const hoyStr = obtenerFechaLocalHoy();
                 return {
-                    presupuesto: 200,
+                    fechaHoy: hoyStr,
+                    fechaSeleccionada: hoyStr,
+                    presupuestoInicial: 0,
+                    presupuestoBloqueado: false,
                     bloquearSobregiro: true,
                     soloContarVerificados: false,
                     categorias: [],
                     gastos: [],
+                    // Apartado Agregar / Disminuir presupuesto
+                    ajusteTipo: 'AUMENTO',
+                    ajusteConcepto: '',
+                    ajusteMonto: null,
+                    // Apartado Gasto normal
                     nuevoConcepto: '',
                     nuevaCategoriaId: 1,
                     nuevoMonto: null,
-                    nuevoVerificado: true
+                    nuevoVerificado: true,
+                    // Edición en panel emergente
+                    movimientoEditando: null,
+                    confirmandoEliminar: false
                 }
             },
             computed: {
+                categoriasGastoNormal() {
+                    return this.categorias.filter(c => c.tipoFlujo === 'GASTO');
+                },
+                totalAumentos() {
+                    return this.gastos
+                        .filter(g => g.tipoFlujo === 'AUMENTO' && (!this.soloContarVerificados || g.verificado))
+                        .reduce((acc, item) => acc + item.monto, 0);
+                },
+                totalDisminuciones() {
+                    return this.gastos
+                        .filter(g => g.tipoFlujo === 'DISMINUCION' && (!this.soloContarVerificados || g.verificado))
+                        .reduce((acc, item) => acc + item.monto, 0);
+                },
+                presupuestoEfectivo() {
+                    return (this.presupuestoInicial || 0) + this.totalAumentos - this.totalDisminuciones;
+                },
                 totalGastado() {
                     return this.gastos
-                        .filter(g => !this.soloContarVerificados || g.verificado)
+                        .filter(g => g.tipoFlujo === 'GASTO' && (!this.soloContarVerificados || g.verificado))
                         .reduce((acc, item) => acc + item.monto, 0);
                 },
                 saldoDisponible() {
-                    return (this.presupuesto || 0) - this.totalGastado;
+                    return this.presupuestoEfectivo - this.totalGastado;
                 },
                 porcentajeGastado() {
-                    if (!this.presupuesto || this.presupuesto <= 0) return 0;
-                    return Math.min((this.totalGastado / this.presupuesto) * 100, 100);
+                    if (this.presupuestoEfectivo <= 0) return 0;
+                    return Math.min((this.totalGastado / this.presupuestoEfectivo) * 100, 100);
                 },
                 colorBarra() {
                     if (this.porcentajeGastado < 60) return 'bg-success';
@@ -155,18 +330,118 @@
                 }
             },
             methods: {
+                validarFechaSeleccionada() {
+                    if (!this.fechaSeleccionada) return false;
+                    if (this.fechaSeleccionada < '2000-01-01' || this.fechaSeleccionada > this.fechaHoy) {
+                        window.UI.showException(
+                            'Fecha Fuera de Rango',
+                            'Solo se permite consultar o generar presupuestos desde el año 2000 hasta la fecha actual.',
+                            'ERR_DATE_RANGE'
+                        );
+                        this.fechaSeleccionada = this.fechaHoy;
+                        return false;
+                    }
+                    return true;
+                },
+                async cambiarFecha() {
+                    if (!this.validarFechaSeleccionada()) {
+                        await this.cargarDesdeSql();
+                        return;
+                    }
+                    await this.cargarDesdeSql();
+                },
                 async cargarDesdeSql() {
-                    const res = await fetch('/Home/ObtenerBilletera');
-                    if (!res.ok) return;
+                    window.UI.showLoader('Cargando billetera del día...');
+                    const res = await fetch(`/Home/ObtenerBilletera?fecha=${this.fechaSeleccionada}`);
+                    window.UI.hideLoader();
+
+                    if (!res.ok) {
+                        const err = await res.json();
+                        window.UI.showException('Fecha Inválida', err.error || 'No se pudo cargar la fecha.', err.codigo);
+                        this.fechaSeleccionada = this.fechaHoy;
+                        return;
+                    }
+
                     const data = await res.json();
-                    this.presupuesto = data.presupuesto;
+                    this.presupuestoInicial = data.presupuestoInicial;
+                    this.presupuestoBloqueado = data.presupuestoBloqueado;
                     this.bloquearSobregiro = data.bloquearSobregiro;
                     this.soloContarVerificados = data.soloContarVerificados;
                     this.categorias = data.categorias;
                     this.gastos = data.gastos;
-                    if (this.categorias.length > 0 && !this.nuevaCategoriaId) {
-                        this.nuevaCategoriaId = this.categorias[0].id;
+
+                    const normales = this.categorias.filter(c => c.tipoFlujo === 'GASTO');
+                    if (normales.length > 0) {
+                        this.nuevaCategoriaId = normales[0].id;
                     }
+                },
+                async guardarPresupuestoInicial() {
+                    if (!this.validarFechaSeleccionada()) return;
+
+                    if (!this.presupuestoInicial || this.presupuestoInicial <= 0) {
+                        window.UI.showException('Presupuesto Inválido', 'Ingresa un presupuesto inicial mayor a $0.00.', 'ERR_BUDGET_AMOUNT');
+                        return;
+                    }
+
+                    window.UI.showLoader('Guardando presupuesto del día...');
+                    const res = await fetch('/Home/GuardarPresupuestoInicial', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            fecha: this.fechaSeleccionada,
+                            presupuestoInicial: this.presupuestoInicial
+                        })
+                    });
+                    const data = await res.json();
+                    window.UI.hideLoader();
+
+                    if (!res.ok) {
+                        window.UI.showException('Error al Guardar Presupuesto', data.error, data.codigo);
+                        return;
+                    }
+
+                    window.UI.notify('Presupuesto Guardado', `Presupuesto fijado en $${this.presupuestoInicial.toFixed(2)} para el ${this.fechaSeleccionada}.`, 'success');
+                    await this.cargarDesdeSql();
+                },
+                async guardarAjustePresupuesto() {
+                    if (!this.ajusteMonto || this.ajusteMonto <= 0) {
+                        window.UI.showException('Monto Inválido', 'Ingresa un monto mayor a $0.00 para ajustar el presupuesto.', 'ERR_ADJUST_AMOUNT');
+                        return;
+                    }
+
+                    const catAjuste = this.categorias.find(c => c.tipoFlujo === this.ajusteTipo);
+                    if (!catAjuste) return;
+
+                    const conceptoFinal = this.ajusteConcepto.trim() || (this.ajusteTipo === 'AUMENTO' ? 'Aumento de presupuesto' : 'Disminución de presupuesto');
+
+                    window.UI.showLoader('Guardando ajuste de presupuesto...');
+                    const res = await fetch('/Home/AgregarMovimientoBilletera', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            fecha: this.fechaSeleccionada,
+                            categoriaId: catAjuste.id,
+                            concepto: conceptoFinal,
+                            monto: this.ajusteMonto,
+                            verificado: true
+                        })
+                    });
+                    const data = await res.json();
+                    window.UI.hideLoader();
+
+                    if (!res.ok) {
+                        window.UI.showException('Ajuste Rechazado', data.error, data.codigo);
+                        return;
+                    }
+
+                    window.UI.notify(
+                        'Presupuesto Ajustado',
+                        `${this.ajusteTipo === 'AUMENTO' ? '+' : '-'}$${this.ajusteMonto.toFixed(2)} (${conceptoFinal}) registrado en movimientos.`,
+                        'success'
+                    );
+                    this.ajusteConcepto = '';
+                    this.ajusteMonto = null;
+                    await this.cargarDesdeSql();
                 },
                 async agregarGasto() {
                     if (!this.nuevoConcepto.trim()) {
@@ -178,11 +453,12 @@
                         return;
                     }
 
-                    window.UI.showLoader('Guardando gasto...');
-                    const res = await fetch('/Home/AgregarGasto', {
+                    window.UI.showLoader('Guardando movimiento...');
+                    const res = await fetch('/Home/AgregarMovimientoBilletera', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
+                            fecha: this.fechaSeleccionada,
                             categoriaId: this.nuevaCategoriaId,
                             concepto: this.nuevoConcepto,
                             monto: this.nuevoMonto,
@@ -197,42 +473,90 @@
                         return;
                     }
 
-                    window.UI.notify('Gasto Guardado', `-$${this.nuevoMonto.toFixed(2)} en ${this.nuevoConcepto}.`, 'success');
+                    window.UI.notify('Movimiento Guardado', `-$${this.nuevoMonto.toFixed(2)} en ${this.nuevoConcepto}.`, 'success');
                     this.nuevoConcepto = '';
                     this.nuevoMonto = null;
                     await this.cargarDesdeSql();
                 },
-                async guardarConfigSql() {
-                    if (this.presupuesto < 0) {
-                        window.UI.showException('Presupuesto Inválido', 'El presupuesto no puede ser negativo.', 'ERR_CHECK_BUDGET');
-                        this.presupuesto = 0;
-                    }
-                    await fetch('/Home/ActualizarConfigBilletera', {
+                async guardarSwitches() {
+                    await fetch('/Home/ActualizarSwitchesBilletera', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            presupuesto: this.presupuesto,
+                            fecha: this.fechaSeleccionada,
                             bloquearSobregiro: this.bloquearSobregiro,
                             soloContarVerificados: this.soloContarVerificados
                         })
                     });
-                    window.UI.notify('Configuración Guardada', 'Tu presupuesto ha sido actualizado.', 'info', false);
+                    window.UI.notify('Preferencias Guardadas', 'Configuración del día actualizada.', 'info', false);
                 },
                 async toggleVerificado(gasto) {
                     await fetch(`/Home/ToggleGastoVerificado?id=${gasto.id}`, { method: 'POST' });
                     await this.cargarDesdeSql();
                 },
-                async eliminarGasto(gasto) {
-                    await fetch(`/Home/EliminarGasto?id=${gasto.id}`, { method: 'POST' });
-                    window.UI.notify('Registro Eliminado', `Se eliminó "${gasto.concepto}".`, 'info');
+                abrirDetalleMovimiento(gasto) {
+                    this.movimientoEditando = {
+                        id: gasto.id,
+                        concepto: gasto.concepto,
+                        monto: gasto.monto,
+                        categoriaId: gasto.categoriaId,
+                        verificado: gasto.verificado
+                    };
+                    this.confirmandoEliminar = false;
+                    const panel = new bootstrap.Offcanvas(document.getElementById('panelDetalleMovimiento'));
+                    panel.show();
+                },
+                async guardarEdicionMovimiento() {
+                    if (!this.movimientoEditando.concepto.trim()) {
+                        window.UI.showException('Nombre Vacío', 'El nombre del movimiento no puede quedar vacío.', 'ERR_EDIT_CONCEPT');
+                        return;
+                    }
+                    if (!this.movimientoEditando.monto || this.movimientoEditando.monto <= 0) {
+                        window.UI.showException('Monto Inválido', 'El monto debe ser mayor a $0.00.', 'ERR_EDIT_AMOUNT');
+                        return;
+                    }
+
+                    window.UI.showLoader('Guardando cambios del movimiento...');
+                    const res = await fetch('/Home/EditarMovimientoBilletera', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.movimientoEditando)
+                    });
+                    const data = await res.json();
+                    window.UI.hideLoader();
+
+                    if (!res.ok) {
+                        window.UI.showException('No se pudo editar', data.error, data.codigo);
+                        return;
+                    }
+
+                    const panelEl = document.getElementById('panelDetalleMovimiento');
+                    const inst = bootstrap.Offcanvas.getInstance(panelEl);
+                    if (inst) inst.hide();
+
+                    window.UI.notify('Movimiento Actualizado', 'Los cambios se guardaron correctamente.', 'success');
                     await this.cargarDesdeSql();
                 },
-                async generarNuevoDia() {
-                    window.UI.showLoader('Generando nuevo día...');
-                    await fetch('/Home/GenerarNuevoDia', { method: 'POST' });
-                    await this.cargarDesdeSql();
+                async confirmarEliminarMovimiento() {
+                    if (!this.movimientoEditando) return;
+
+                    window.UI.showLoader('Eliminando movimiento...');
+                    await fetch(`/Home/EliminarGasto?id=${this.movimientoEditando.id}`, { method: 'POST' });
                     window.UI.hideLoader();
-                    window.UI.notify('Nuevo Día Generado', 'Tu billetera activa inició de cero. Los gastos anteriores siguen disponibles en el Calendario.', 'success');
+
+                    const panelEl = document.getElementById('panelDetalleMovimiento');
+                    const inst = bootstrap.Offcanvas.getInstance(panelEl);
+                    if (inst) inst.hide();
+
+                    window.UI.notify('Movimiento Eliminado', `Se eliminó "${this.movimientoEditando.concepto}".`, 'warning');
+                    this.movimientoEditando = null;
+                    this.confirmandoEliminar = false;
+                    await this.cargarDesdeSql();
+                },
+                etiquetaFlujo(flujo) {
+                    if (flujo === 'AUMENTO') return 'Suma al presupuesto';
+                    if (flujo === 'DISMINUCION') return 'Resta al presupuesto';
+                    return 'Gasto';
                 }
             },
             mounted() {
