@@ -2,7 +2,6 @@
 @{
     int? usuarioId = Context.Session.GetInt32("UsuarioId");
     string? usuarioNombre = Context.Session.GetString("UsuarioNombre");
-    string? usuarioRol = Context.Session.GetString("UsuarioRol");
 }
 <!DOCTYPE html>
 <html lang="es">
@@ -10,11 +9,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - GarAngelito Tools Pro</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Bootstrap Local -->
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/lib/frameworks/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
@@ -22,7 +19,7 @@
     <div id="global-loader" class="loader-overlay d-none">
         <div class="card-minimal p-4 text-center shadow-sm">
             <div class="spinner-border text-dark mb-2" role="status"></div>
-            <div id="loader-text" class="small fw-medium text-muted">Conectando con GarAngelitoToolsProDB...</div>
+            <div id="loader-text" class="small fw-medium text-muted">Procesando...</div>
         </div>
     </div>
 
@@ -32,15 +29,14 @@
             <a class="navbar-brand fw-semibold d-flex align-items-center gap-2" asp-controller="Home" asp-action="@(usuarioId != null ? "Index" : "Login")">
                 <i class="bi bi-boxes text-dark"></i>
                 <span>GarAngelito Tools Pro</span>
-                <small class="badge bg-dark fw-normal" style="font-size:0.65rem;">SQL 3FN</small>
             </a>
 
             @if (usuarioId != null)
             {
                 <div class="d-flex align-items-center gap-2 order-lg-last ms-2">
-                    <span class="d-none d-md-inline-block small text-muted me-1">
-                        <i class="bi bi-person-badge me-1"></i>@usuarioNombre
-                        <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@usuarioRol</span>
+                    <span class="d-none d-md-inline-flex align-items-center small text-muted me-1">
+                        <i class="bi bi-person-circle me-1"></i>@usuarioNombre
+                        <span class="pro-badge ms-2">PRO</span>
                     </span>
                     <button class="btn btn-light border position-relative rounded-3 px-2 py-1" type="button" data-bs-toggle="offcanvas" data-bs-target="#panelNotificaciones">
                         <i class="bi bi-bell fs-5"></i>
@@ -60,7 +56,6 @@
                         <li class="nav-item"><a class="nav-link px-3 rounded-3" asp-controller="Home" asp-action="Billetera">Billetera</a></li>
                         <li class="nav-item"><a class="nav-link px-3 rounded-3" asp-controller="Home" asp-action="Kanban">Tareas</a></li>
                         <li class="nav-item"><a class="nav-link px-3 rounded-3" asp-controller="Home" asp-action="Horario">Horario</a></li>
-                        <li class="nav-item"><a class="nav-link px-3 rounded-3" asp-controller="Home" asp-action="Apa">Citas APA</a></li>
                     </ul>
                 </div>
             }
@@ -68,7 +63,7 @@
             {
                 <div class="ms-auto d-flex gap-2">
                     <a asp-controller="Home" asp-action="Login" class="btn btn-light border btn-sm rounded-3 px-3">Iniciar Sesión</a>
-                    <a asp-controller="Home" asp-action="Registro" class="btn-dark-minimal btn-sm text-decoration-none py-1 px-3">Registro Estudiantes</a>
+                    <a asp-controller="Home" asp-action="Registro" class="btn-dark-minimal btn-sm text-decoration-none py-1 px-3">Registrarse</a>
                 </div>
             }
         </div>
@@ -82,7 +77,7 @@
     <div class="offcanvas offcanvas-end" tabindex="-1" id="panelNotificaciones">
         <div class="offcanvas-header border-bottom">
             <h6 class="offcanvas-title fw-semibold mb-0">
-                <i class="bi bi-bell me-2"></i>Notificaciones (GarAngelitoToolsProDB)
+                <i class="bi bi-bell me-2"></i>Centro de Notificaciones
             </h6>
             <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
         </div>
@@ -91,7 +86,7 @@
                 <button onclick="window.UI.marcarTodasLeidas()" class="btn btn-link btn-sm text-decoration-none text-dark p-0 small">
                     <i class="bi bi-check2-all me-1"></i>Marcar todas leídas
                 </button>
-                <button onclick="window.UI.limpiarNotificaciones()" class="btn btn-link btn-sm text-decoration-none text-danger p-0 small">Borrar de BD</button>
+                <button onclick="window.UI.limpiarNotificaciones()" class="btn btn-link btn-sm text-decoration-none text-danger p-0 small">Limpiar</button>
             </div>
             <div id="notif-lista" class="list-group list-group-flush overflow-auto flex-grow-1"></div>
         </div>
@@ -106,11 +101,11 @@
             <div class="modal-content border-0 shadow rounded-4 overflow-hidden">
                 <div class="bg-danger text-white p-3 text-center">
                     <i class="bi bi-exclamation-octagon-fill display-5"></i>
-                    <h6 class="fw-semibold mt-2 mb-0" id="error-modal-title">Excepción SQL / Aplicación</h6>
+                    <h6 class="fw-semibold mt-2 mb-0" id="error-modal-title">Aviso del Sistema</h6>
                 </div>
                 <div class="modal-body text-center p-4">
                     <p class="small text-muted mb-2" id="error-modal-msg">Ha ocurrido un error inesperado.</p>
-                    <code class="d-block bg-light p-2 rounded small text-danger border" id="error-modal-code">SQL_ERR</code>
+                    <code class="d-block bg-light p-2 rounded small text-danger border" id="error-modal-code">ERR_SYS</code>
                 </div>
                 <div class="modal-footer border-0 pt-0 justify-content-center">
                     <button type="button" class="btn btn-dark-minimal w-100" data-bs-dismiss="modal">Entendido</button>
@@ -121,14 +116,14 @@
 
     <footer class="text-center text-muted py-4 mt-auto border-top bg-white small">
         <div class="container">
-            <strong>GarAngelito Tools Pro</strong> &bull; .NET 10 MVC + GarAngelitoToolsProDB (SQL 3FN) + Bootstrap + React + Vue
+            <strong>GarAngelito Tools Pro</strong> &bull; Plataforma de Productividad y Organización
         </div>
     </footer>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script>
             window.UI = {
-                showLoader(texto = 'Procesando en GarAngelitoToolsProDB...') {
+                showLoader(texto = 'Procesando...') {
                     document.getElementById('loader-text').innerText = texto;
                     document.getElementById('global-loader').classList.remove('d-none');
                 },
@@ -171,7 +166,7 @@
                         if (res.ok) await this.renderNotificaciones();
                     }
                 },
-                showException(titulo, detalle, codigoError = 'SQL_ERR_50000') {
+                showException(titulo, detalle, codigoError = 'ERR_VALIDACION') {
                     document.getElementById('error-modal-title').innerText = titulo;
                     document.getElementById('error-modal-msg').innerText = detalle;
                     document.getElementById('error-modal-code').innerText = codigoError;
@@ -197,7 +192,7 @@
                     }
 
                     if (lista.length === 0) {
-                        contenedor.innerHTML = `<div class="text-center text-muted small py-5"><i class="bi bi-inbox fs-2 d-block mb-2"></i>Sin notificaciones en BD</div>`;
+                        contenedor.innerHTML = `<div class="text-center text-muted small py-5"><i class="bi bi-inbox fs-2 d-block mb-2"></i>No hay notificaciones</div>`;
                         return;
                     }
 
@@ -211,7 +206,7 @@
                     contenedor.innerHTML = lista.map(n => `
                         <div class="list-group-item px-3 py-3 border-bottom ${!n.leida ? 'bg-light' : ''}">
                             <div class="d-flex align-items-start gap-2">
-                                <input type="checkbox" class="form-check-input mt-1" ${n.leida ? 'checked' : ''} onchange="window.UI.toggleLeida(${n.id})" title="Check de lectura en BD" />
+                                <input type="checkbox" class="form-check-input mt-1" ${n.leida ? 'checked' : ''} onchange="window.UI.toggleLeida(${n.id})" />
                                 <i class="bi ${iconos[n.tipo] || iconos.info} mt-1"></i>
                                 <div class="w-100 ${n.leida ? 'opacity-50' : ''}">
                                     <div class="d-flex justify-content-between">

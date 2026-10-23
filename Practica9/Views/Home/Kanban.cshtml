@@ -5,9 +5,9 @@
 <div id="root-kanban"></div>
 
 @section Scripts {
-    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-    <script src="https://unpkg.com/@@babel/standalone/babel.min.js"></script>
+    <script src="~/lib/frameworks/react.min.js"></script>
+    <script src="~/lib/frameworks/react-dom.min.js"></script>
+    <script src="~/lib/frameworks/babel.min.js"></script>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
@@ -27,6 +27,7 @@
 
             const cargarKanbanSql = async () => {
                 const res = await fetch('/Home/ObtenerKanban');
+                if (!res.ok) return;
                 const data = await res.json();
                 setTareas(data);
             };
@@ -55,7 +56,7 @@
                     return;
                 }
 
-                window.UI.showLoader('Subiendo imagen y guardando en TareasKanban...');
+                window.UI.showLoader('Guardando tarea...');
                 const formData = new FormData();
                 formData.append('titulo', titulo);
                 formData.append('materia', materia);
@@ -70,7 +71,7 @@
                 window.UI.hideLoader();
 
                 if (!res.ok) {
-                    window.UI.showException('Error al Crear Tarea', data.error, data.codigo);
+                    window.UI.showException('Error al Guardar Tarea', data.error, data.codigo);
                     return;
                 }
 
@@ -81,7 +82,7 @@
                 setPreviewUrl(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
 
-                window.UI.notify('Tarea Guardada en SQL', `"${titulo}" registrada correctamente.`, 'success');
+                window.UI.notify('Tarea Guardada', `"${titulo}" registrada correctamente.`, 'success');
                 await cargarKanbanSql();
             };
 
@@ -89,7 +90,7 @@
                 const res = await fetch(`/Home/ToggleSubtarea?subtareaId=${subId}`, { method: 'POST' });
                 const data = await res.json();
                 if (data.estadoAuto === 'done') {
-                    window.UI.notify('¡Checklist Completado!', `"${tareaTitulo}" se movió automáticamente a Terminado en SQL Server.`, 'success');
+                    window.UI.notify('¡Checklist Completado!', `"${tareaTitulo}" se movió automáticamente a Terminado.`, 'success');
                 }
                 await cargarKanbanSql();
             };
@@ -104,13 +105,13 @@
 
             const moverTarea = async (id, nuevoEstado, nombreEstado) => {
                 await fetch(`/Home/MoverTareaKanban?tareaId=${id}&nuevoEstadoCodigo=${nuevoEstado}`, { method: 'POST' });
-                window.UI.notify('Estado Actualizado en BD', `La tarea pasó a ${nombreEstado}.`, 'info');
+                window.UI.notify('Estado Actualizado', `La tarea pasó a ${nombreEstado}.`, 'info');
                 await cargarKanbanSql();
             };
 
             const eliminarTarea = async (id) => {
                 await fetch(`/Home/EliminarTareaKanban?tareaId=${id}`, { method: 'POST' });
-                window.UI.notify('Tarea Eliminada', 'Registro eliminado de TareasKanban.', 'warning');
+                window.UI.notify('Tarea Eliminada', 'Registro eliminado del tablero.', 'warning');
                 await cargarKanbanSql();
             };
 
@@ -158,7 +159,7 @@
                                             <div className="bg-light rounded-3 p-2 mb-3">
                                                 <div className="d-flex justify-content-between align-items-center mb-1">
                                                     <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                                                        <i className="bi bi-check2-square me-1"></i>Checks SQL ({completadas}/{subs.length})
+                                                        <i className="bi bi-check2-square me-1"></i>Subtareas ({completadas}/{subs.length})
                                                     </span>
                                                     {subs.length > 0 && <span className="fw-semibold" style={{ fontSize: '0.75rem' }}>{pct}%</span>}
                                                 </div>
@@ -188,13 +189,13 @@
                                                     <input
                                                         type="text"
                                                         className="form-control form-control-sm"
-                                                        placeholder="Nuevo check en BD..."
+                                                        placeholder="Nueva subtarea..."
                                                         value={nuevoSubtexto[t.id] || ''}
                                                         onChange={e => setNuevoSubtexto({ ...nuevoSubtexto, [t.id]: e.target.value })}
                                                         onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), agregarSubtareaIndividual(t.id))}
                                                     />
                                                     <button type="button" onClick={() => agregarSubtareaIndividual(t.id)} className="btn btn-outline-secondary">
-                                                        <i className="bi bi-plus"></i>
+                                                        Guardar
                                                     </button>
                                                 </div>
                                             </div>
@@ -223,7 +224,6 @@
                 <div>
                     <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
                         <div>
-                            <span className="tech-badge bg-info-subtle text-info-emphasis mb-1 d-inline-block">React 18 + SQL 3FN + Archivos</span>
                             <h3 className="fw-semibold mb-0">Tablero Kanban de Entregas</h3>
                         </div>
                         <div className="form-check form-switch">
@@ -251,13 +251,13 @@
                                 </select>
                             </div>
                             <div className="col-md-2 d-grid">
-                                <button type="submit" className="btn-dark-minimal">Guardar en BD</button>
+                                <button type="submit" className="btn-dark-minimal">Guardar</button>
                             </div>
                         </div>
 
                         <div className="mt-2 pt-2 border-top d-flex flex-wrap align-items-center justify-content-between gap-2">
                             <div className="d-flex align-items-center gap-2">
-                                <label className="small text-muted"><i className="bi bi-image me-1"></i>Subir imagen al servidor:</label>
+                                <label className="small text-muted"><i className="bi bi-image me-1"></i>Subir imagen:</label>
                                 <input type="file" ref={fileInputRef} accept="image/*" className="form-control form-control-sm" style={{ maxWidth: '260px' }} onChange={manejarSeleccionArchivo} />
                             </div>
                             {previewUrl && (

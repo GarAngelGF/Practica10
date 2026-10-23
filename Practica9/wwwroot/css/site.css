@@ -1,5 +1,13 @@
+/* Evita que se vean llaves {{ }} de Vue antes de compilar */
+[v-cloak] {
+    display: none !important;
+}
+
+body, input, select, button, textarea, table {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     background-color: #f8f9fa;
     color: #212529;
     min-height: 100vh;
@@ -23,7 +31,7 @@ body {
 
 .nav-link {
     color: #555 !important;
-    font-size: 0.92rem;
+    font-size: 0.93rem;
     font-weight: 500;
 }
 
@@ -35,8 +43,8 @@ body {
 .form-control, .form-select {
     border-radius: 8px;
     border-color: #dee2e6;
-    font-size: 0.95rem;
-    padding: 0.55rem 0.85rem;
+    font-size: 0.94rem;
+    padding: 0.5rem 0.8rem;
 }
 
     .form-control:focus, .form-select:focus {
@@ -44,7 +52,6 @@ body {
         border-color: #212529;
     }
 
-/* Estilo minimalista para Checkboxes y Switches */
 .form-check-input {
     cursor: pointer;
     border-color: #adb5bd;
@@ -52,11 +59,6 @@ body {
 
     .form-check-input:checked {
         background-color: #212529;
-        border-color: #212529;
-    }
-
-    .form-check-input:focus {
-        box-shadow: 0 0 0 3px rgba(33, 37, 41, 0.12);
         border-color: #212529;
     }
 
@@ -103,7 +105,16 @@ body {
     border-radius: 6px;
 }
 
-/* Loader de pantalla completa */
+.pro-badge {
+    background: linear-gradient(135deg, #212529 0%, #495057 100%);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+}
+
 .loader-overlay {
     position: fixed;
     top: 0;
@@ -118,7 +129,6 @@ body {
     justify-content: center;
 }
 
-/* Miniaturas en Kanban */
 .kanban-img-thumb {
     width: 100%;
     height: 125px;
@@ -127,3 +137,14 @@ body {
     cursor: zoom-in;
     border: 1px solid #eaeaea;
 }
+
+.schedule-block {
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    border: 1px solid rgba(0,0,0,0.06);
+}
+
+    .schedule-block:hover {
+        transform: scale(1.02);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+    }

@@ -5,32 +5,47 @@
 <div id="root-horario"></div>
 
 @section Scripts {
-    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-    <script src="https://unpkg.com/@@babel/standalone/babel.min.js"></script>
+    <script src="~/lib/frameworks/react.min.js"></script>
+    <script src="~/lib/frameworks/react-dom.min.js"></script>
+    <script src="~/lib/frameworks/babel.min.js"></script>
 
     <script type="text/babel">
         const { useState, useEffect } = React;
 
+        const HORAS_FILAS = Array.from({ length: 15 }, (_, i) => i + 7); // 7 a 21 (bloques hasta las 22:00)
+        const OPCIONES_HORAS = Array.from({ length: 16 }, (_, i) => i + 7); // 7 a 22 hrs
+        const OPCIONES_MINUTOS = Array.from({ length: 60 }, (_, i) => i);   // 0 a 59 mins
+
         function HorarioApp() {
             const [dias, setDias] = useState([]);
-            const [horas, setHoras] = useState([]);
+            const [edificios, setEdificios] = useState([]);
             const [colores, setColores] = useState([]);
             const [clases, setClases] = useState([]);
 
             const [materia, setMateria] = useState('');
-            const [salon, setSalon] = useState('');
+            const [edificioId, setEdificioId] = useState(1);
+            const [esLaboratorio, setEsLaboratorio] = useState(false);
+            const [numeroSalon, setNumeroSalon] = useState('');
+            const [nombreLaboratorio, setNombreLaboratorio] = useState('');
             const [diasSeleccionados, setDiasSeleccionados] = useState([1]);
-            const [bloqueTiempoId, setBloqueTiempoId] = useState(1);
+
+            const [horaIni, setHoraIni] = useState(7);
+            const [minIni, setMinIni] = useState(0);
+            const [horaFin, setHoraFin] = useState(8);
+            const [minFin, setMinFin] = useState(30);
+
             const [colorId, setColorId] = useState(1);
+            const [claseDetalle, setClaseDetalle] = useState(null);
 
             const cargarHorarioSql = async () => {
                 const res = await fetch('/Home/ObtenerHorario');
+                if (!res.ok) return;
                 const data = await res.json();
                 setDias(data.dias);
-                setHoras(data.horas);
+                setEdificios(data.edificios);
                 setColores(data.colores);
                 setClases(data.clases);
+                if (data.edificios.length > 0 && !edificioId) setEdificioId(data.edificios[0].id);
             };
 
             useEffect(() => {
@@ -45,26 +60,66 @@
                 }
             };
 
-            const agregarClase = async (e) => {
+            const validarSalonIntervalo = (num) => {
+                const n = Number(num);
+                if (!Number.isInteger(n)) return false;
+                return (n >= 101 && n <= 115) || (n >= 201 && n <= 215) || (n >= 301 && n <= 315);
+            };
+
+            const formatearHora = (h, m) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+            const guardarClase = async (e) => {
                 e.preventDefault();
                 if (!materia.trim()) {
                     window.UI.showException('Materia Vacía', 'Escribe el nombre de la materia.', 'ERR_SCHEDULE_NAME');
                     return;
                 }
                 if (diasSeleccionados.length === 0) {
-                    window.UI.showException('Sin Días Marcados', 'Marca con un check al menos un día.', 'ERR_NO_DAYS');
+                    window.UI.showException('Sin Días Marcados', 'Marca al menos un día de la semana.', 'ERR_NO_DAYS');
                     return;
                 }
 
-                window.UI.showLoader('Ejecutando sp_AsignarBloqueHorario en SQL Server...');
+                if (!esLaboratorio) {
+                    if (!validarSalonIntervalo(numeroSalon)) {
+                        window.UI.showException(
+                            'Salón Fuera de Rango',
+                            'Solo se permiten números de salón en los intervalos: 101 a 115, 201 a 215 o 301 a 315.',
+                            'ERR_ROOM_INTERVAL'
+                        );
+                        return;
+                    }
+                } else {
+                    if (!nombreLaboratorio.trim()) {
+                        window.UI.showException('Laboratorio Vacío', 'Escribe qué laboratorio es.', 'ERR_LAB_NAME');
+                        return;
+                    }
+                }
+
+                const hInicioStr = formatearHora(horaIni, minIni);
+                const hFinStr = formatearHora(horaFin, minFin);
+
+                if (Number(horaFin) * 60 + Number(minFin) <= Number(horaIni) * 60 + Number(minIni)) {
+                    window.UI.showException('Horario Inválido', 'La hora de finalización debe ser mayor a la hora de inicio.', 'ERR_TIME_ORDER');
+                    return;
+                }
+                if (Number(horaFin) === 22 && Number(minFin) > 0) {
+                    window.UI.showException('Límite de Horario (22:00 hrs)', 'El horario escolar termina como máximo a las 22:00 hrs.', 'ERR_MAX_22HRS');
+                    return;
+                }
+
+                window.UI.showLoader('Guardando clase en el horario...');
                 const res = await fetch('/Home/AsignarHorario', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         materia,
-                        salon,
+                        edificioId: Number(edificioId),
+                        esLaboratorio,
+                        numeroSalon: esLaboratorio ? null : Number(numeroSalon),
+                        nombreLaboratorio: esLaboratorio ? nombreLaboratorio : null,
                         diasIds: diasSeleccionados,
-                        bloqueTiempoId: Number(bloqueTiempoId),
+                        horaInicio: hInicioStr,
+                        horaFin: hFinStr,
                         colorId: Number(colorId)
                     })
                 });
@@ -72,25 +127,30 @@
                 window.UI.hideLoader();
 
                 if (!res.ok) {
-                    window.UI.showException('Colisión Detectada en SQL Server', data.error, data.codigo);
+                    window.UI.showException('No se pudo guardar el horario', data.error, data.codigo);
                     return;
                 }
 
-                window.UI.notify('Horario Guardado en BD', `"${materia}" registrada sin traslapes.`, 'success');
+                window.UI.notify('Horario Guardado', `"${materia}" registrada exitosamente.`, 'success');
                 setMateria('');
-                setSalon('');
+                setNumeroSalon('');
+                setNombreLaboratorio('');
                 await cargarHorarioSql();
             };
 
-            const toggleAsistencia = async (horarioId, materiaNombre) => {
-                await fetch(`/Home/ToggleAsistenciaHorario?horarioId=${horarioId}`, { method: 'POST' });
-                window.UI.notify('Asistencia Actualizada', `Check de asistencia actualizado para ${materiaNombre}.`, 'info', false);
-                await cargarHorarioSql();
+            const abrirDetalleClase = (bloque) => {
+                setClaseDetalle(bloque);
+                const panel = new bootstrap.Offcanvas(document.getElementById('panelDetalleHorario'));
+                panel.show();
             };
 
             const eliminarClase = async (horarioId) => {
                 await fetch(`/Home/EliminarBloqueHorario?horarioId=${horarioId}`, { method: 'POST' });
-                window.UI.notify('Bloque Eliminado', 'Se liberó el bloque en HorarioClases.', 'warning');
+                const panelEl = document.getElementById('panelDetalleHorario');
+                const inst = bootstrap.Offcanvas.getInstance(panelEl);
+                if (inst) inst.hide();
+                setClaseDetalle(null);
+                window.UI.notify('Clase Eliminada', 'Se liberó el espacio en tu horario.', 'warning');
                 await cargarHorarioSql();
             };
 
@@ -98,95 +158,226 @@
                 <div>
                     <div className="d-flex justify-content-between align-items-center mb-4">
                         <div>
-                            <span className="tech-badge bg-info-subtle text-info-emphasis mb-1 d-inline-block">React 18 + sp_AsignarBloqueHorario</span>
-                            <h3 className="fw-semibold mb-0">Armador Visual de Horarios (3FN)</h3>
+                            <h3 className="fw-semibold mb-0">Armador Visual de Horarios (07:00 - 22:00 hrs)</h3>
+                            <p className="text-muted small mb-0">Haz clic sobre cualquier materia en la tabla para desplegar el panel de detalles</p>
                         </div>
                         <button onClick={() => window.print()} className="btn btn-outline-dark btn-sm rounded-3">
                             <i className="bi bi-printer me-1"></i> Imprimir / PDF
                         </button>
                     </div>
 
-                    <form onSubmit={agregarClase} className="card-minimal p-3 mb-4">
-                        <div className="row g-2 align-items-center mb-3">
-                            <div className="col-md-4">
-                                <input type="text" className="form-control" placeholder="Materia" value={materia} onChange={e => setMateria(e.target.value)} />
+                    <form onSubmit={guardarClase} className="card-minimal p-4 mb-4">
+                        <div className="row g-3 align-items-end mb-3">
+                            <div className="col-md-3">
+                                <label className="form-label small text-muted fw-medium">Materia</label>
+                                <input type="text" className="form-control" placeholder="Ej. Sistemas Digitales" value={materia} onChange={e => setMateria(e.target.value)} />
                             </div>
+
                             <div className="col-md-2">
-                                <input type="text" className="form-control" placeholder="Salón / Lab" value={salon} onChange={e => setSalon(e.target.value)} />
-                            </div>
-                            <div className="col-md-2">
-                                <select className="form-select" value={bloqueTiempoId} onChange={e => setBloqueTiempoId(e.target.value)}>
-                                    {horas.map(h => <option key={h.id} value={h.id}>{h.rango}</option>)}
+                                <label className="form-label small text-muted fw-medium">Edificio</label>
+                                <select className="form-select" value={edificioId} onChange={e => setEdificioId(e.target.value)}>
+                                    {edificios.map(ed => <option key={ed.id} value={ed.id}>{ed.nombre}</option>)}
                                 </select>
                             </div>
+
                             <div className="col-md-2">
+                                <div className="form-check mb-2">
+                                    <input className="form-check-input" type="checkbox" id="chkLab" checked={esLaboratorio} onChange={e => setEsLaboratorio(e.target.checked)} />
+                                    <label className="form-check-label small fw-medium" htmlFor="chkLab">Laboratorio</label>
+                                </div>
+                                <input
+                                    type="number"
+                                    className="form-control"
+                                    placeholder="Salón (Ej. 101, 205)"
+                                    value={numeroSalon}
+                                    onChange={e => setNumeroSalon(e.target.value)}
+                                    disabled={esLaboratorio}
+                                    title="Intervalos permitidos: 101-115, 201-215, 301-315"
+                                />
+                            </div>
+
+                            <div className="col-md-3">
+                                <label className="form-label small text-muted fw-medium">Nombre del Laboratorio</label>
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    placeholder={esLaboratorio ? "Escribe qué laboratorio es..." : "Activa el check Laboratorio"}
+                                    value={nombreLaboratorio}
+                                    onChange={e => setNombreLaboratorio(e.target.value)}
+                                    disabled={!esLaboratorio}
+                                />
+                            </div>
+
+                            <div className="col-md-2">
+                                <label className="form-label small text-muted fw-medium">Color</label>
                                 <select className="form-select" value={colorId} onChange={e => setColorId(e.target.value)}>
-                                    {colores.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                                    {colores.map(c => (
+                                        <option key={c.id} value={c.id} style={{ backgroundColor: c.hex }}>
+                                            {c.nombre}
+                                        </option>
+                                    ))}
                                 </select>
-                            </div>
-                            <div className="col-md-2 d-grid">
-                                <button type="submit" className="btn-dark-minimal">Asignar en BD</button>
                             </div>
                         </div>
 
-                        <div className="d-flex flex-wrap align-items-center gap-2 pt-2 border-top">
-                            <span className="small text-muted me-2"><i className="bi bi-check2-circle me-1"></i>Días (Catálogo DiasSemana):</span>
-                            {dias.map(d => (
-                                <label key={d.id} className={`check-pill ${diasSeleccionados.includes(d.id) ? 'active' : ''}`}>
-                                    <input
-                                        type="checkbox"
-                                        className="form-check-input mt-0"
-                                        checked={diasSeleccionados.includes(d.id)}
-                                        onChange={() => toggleDiaCheck(d.id)}
-                                    />
-                                    <span>{d.nombre}</span>
-                                </label>
-                            ))}
+                        <div className="row g-3 align-items-end pt-3 border-top">
+                            <div className="col-md-3">
+                                <label className="form-label small text-muted fw-medium">Hora y Minuto de Inicio (7-22 hrs)</label>
+                                <div className="d-flex align-items-center gap-1">
+                                    <select className="form-select" value={horaIni} onChange={e => setHoraIni(e.target.value)}>
+                                        {OPCIONES_HORAS.slice(0, 15).map(h => <option key={h} value={h}>{String(h).padStart(2, '0')} hrs</option>)}
+                                    </select>
+                                    <span>:</span>
+                                    <select className="form-select" value={minIni} onChange={e => setMinIni(e.target.value)}>
+                                        {OPCIONES_MINUTOS.map(m => <option key={m} value={m}>{String(m).padStart(2, '0')} min</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="col-md-3">
+                                <label className="form-label small text-muted fw-medium">Hora y Minuto de Fin (7-22 hrs)</label>
+                                <div className="d-flex align-items-center gap-1">
+                                    <select className="form-select" value={horaFin} onChange={e => setHoraFin(e.target.value)}>
+                                        {OPCIONES_HORAS.map(h => <option key={h} value={h}>{String(h).padStart(2, '0')} hrs</option>)}
+                                    </select>
+                                    <span>:</span>
+                                    <select className="form-select" value={minFin} onChange={e => setMinFin(e.target.value)}>
+                                        {OPCIONES_MINUTOS.map(m => <option key={m} value={m}>{String(m).padStart(2, '0')} min</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="col-md-4">
+                                <label className="form-label small text-muted fw-medium d-block">Días de la semana</label>
+                                <div className="d-flex flex-wrap gap-1">
+                                    {dias.map(d => (
+                                        <label key={d.id} className={`check-pill ${diasSeleccionados.includes(d.id) ? 'active' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                className="form-check-input mt-0"
+                                                checked={diasSeleccionados.includes(d.id)}
+                                                onChange={() => toggleDiaCheck(d.id)}
+                                            />
+                                            <span>{d.nombre}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="col-md-2 d-grid">
+                                <button type="submit" className="btn-dark-minimal">Guardar</button>
+                            </div>
                         </div>
                     </form>
 
+                    {/* TABLA DE HORARIO DE 07:00 A 22:00 */}
                     <div className="card-minimal overflow-hidden">
                         <div className="table-responsive">
                             <table className="table table-bordered mb-0 align-middle text-center" style={{ tableLayout: 'fixed' }}>
                                 <thead className="table-light">
                                     <tr>
-                                        <th style={{ width: '130px' }} className="small text-muted fw-semibold py-3">Bloque (TIME)</th>
+                                        <th style={{ width: '125px' }} className="small text-muted fw-semibold py-3">Hora</th>
                                         {dias.map(d => <th key={d.id} className="small fw-semibold py-3">{d.nombre}</th>)}
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {horas.map(h => (
-                                        <tr key={h.id}>
-                                            <td className="small text-muted fw-medium bg-light">{h.rango}</td>
-                                            {dias.map(d => {
-                                                const bloque = clases.find(c => c.diaId === d.id && c.bloqueTiempoId === h.id);
-                                                return (
-                                                    <td key={d.id} className="p-1" style={{ height: '82px' }}>
-                                                        {bloque ? (
-                                                            <div className="p-2 rounded-3 h-100 d-flex flex-column justify-content-center position-relative" style={{ backgroundColor: bloque.color }}>
-                                                                <input
-                                                                    type="checkbox"
-                                                                    className="form-check-input position-absolute top-0 start-0 ms-1 mt-1"
-                                                                    checked={bloque.asistido}
-                                                                    onChange={() => toggleAsistencia(bloque.id, bloque.materia)}
-                                                                    title="Check en tabla AsistenciasClase"
-                                                                />
-                                                                <button onClick={() => eliminarClase(bloque.id)} className="btn btn-sm p-0 position-absolute top-0 end-0 me-1 text-muted border-0">
-                                                                    <i className="bi bi-x"></i>
-                                                                </button>
-                                                                <span className="fw-semibold small d-block text-truncate mt-2">{bloque.materia}</span>
-                                                                <span className="text-muted" style={{ fontSize: '0.72rem' }}>
-                                                                    {bloque.salon} {bloque.asistido && <i className="bi bi-check-circle-fill text-success ms-1"></i>}
-                                                                </span>
+                                    {HORAS_FILAS.map(horaFila => {
+                                        const etiquetaFila = `${String(horaFila).padStart(2, '0')}:00 - ${String(horaFila + 1).padStart(2, '0')}:00`;
+                                        return (
+                                            <tr key={horaFila}>
+                                                <td className="small text-muted fw-medium bg-light">{etiquetaFila}</td>
+                                                {dias.map(d => {
+                                                    // Mostrar las clases que cubren esta hora en este día
+                                                    const bloquesEnHora = clases.filter(c => {
+                                                        if (c.diaId !== d.id) return false;
+                                                        const iniMin = c.horaInicioInt * 60 + c.minInicioInt;
+                                                        const finMin = c.horaFinInt * 60 + c.minFinInt;
+                                                        const filaIni = horaFila * 60;
+                                                        const filaFin = (horaFila + 1) * 60;
+                                                        return iniMin < filaFin && finMin > filaIni;
+                                                    });
+
+                                                    return (
+                                                        <td key={d.id} className="p-1" style={{ height: '72px' }}>
+                                                            <div className="d-flex flex-column gap-1 h-100">
+                                                                {bloquesEnHora.map(bloque => (
+                                                                    <div
+                                                                        key={bloque.id}
+                                                                        onClick={() => abrirDetalleClase(bloque)}
+                                                                        className="p-2 rounded-3 h-100 d-flex flex-column justify-content-center schedule-block"
+                                                                        style={{ backgroundColor: bloque.color }}
+                                                                        title="Haz clic para ver detalles de la materia"
+                                                                    >
+                                                                        <span className="fw-semibold small d-block text-truncate">{bloque.materia}</span>
+                                                                        <span className="text-muted d-block text-truncate" style={{ fontSize: '0.72rem' }}>
+                                                                            {bloque.horaInicio} - {bloque.horaFin} &bull; {bloque.edificio}
+                                                                        </span>
+                                                                        <span className="text-dark fw-medium" style={{ fontSize: '0.7rem' }}>
+                                                                            {bloque.ubicacionMostrar}
+                                                                        </span>
+                                                                    </div>
+                                                                ))}
                                                             </div>
-                                                        ) : null}
-                                                    </td>
-                                                );
-                                            })}
-                                        </tr>
-                                    ))}
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    {/* PANEL EMERGENTE LATERAL DE DETALLES (OFFCANVAS) */}
+                    <div className="offcanvas offcanvas-end" tabIndex="-1" id="panelDetalleHorario">
+                        <div className="offcanvas-header border-bottom">
+                            <h6 className="offcanvas-title fw-semibold mb-0">
+                                <i className="bi bi-journal-text me-2"></i>Detalles de la Clase
+                            </h6>
+                            <button type="button" className="btn-close" data-bs-dismiss="offcanvas"></button>
+                        </div>
+                        <div className="offcanvas-body p-4">
+                            {claseDetalle ? (
+                                <div>
+                                    <div className="p-3 rounded-3 mb-4 border" style={{ backgroundColor: claseDetalle.color }}>
+                                        <span className="badge bg-dark mb-2">{claseDetalle.diaNombre}</span>
+                                        <h4 className="fw-bold mb-1">{claseDetalle.materia}</h4>
+                                        <span className="small text-muted">
+                                            <i className="bi bi-clock me-1"></i>{claseDetalle.horaInicio} a {claseDetalle.horaFin} hrs
+                                        </span>
+                                    </div>
+
+                                    <ul className="list-group list-group-flush mb-4">
+                                        <li className="list-group-item px-0 py-3 d-flex justify-content-between">
+                                            <span className="text-muted small">Edificio</span>
+                                            <span className="fw-semibold small">{claseDetalle.edificio}</span>
+                                        </li>
+                                        <li className="list-group-item px-0 py-3 d-flex justify-content-between">
+                                            <span className="text-muted small">Tipo de Aula</span>
+                                            <span className="fw-semibold small">
+                                                {claseDetalle.esLaboratorio ? 'Laboratorio' : 'Salón de Clase'}
+                                            </span>
+                                        </li>
+                                        <li className="list-group-item px-0 py-3 d-flex justify-content-between">
+                                            <span className="text-muted small">Ubicación asignada</span>
+                                            <span className="fw-semibold small">{claseDetalle.ubicacionMostrar}</span>
+                                        </li>
+                                        <li className="list-group-item px-0 py-3 d-flex justify-content-between">
+                                            <span className="text-muted small">Color de tema</span>
+                                            <span className="fw-semibold small">{claseDetalle.colorNombre}</span>
+                                        </li>
+                                    </ul>
+
+                                    <div className="d-grid">
+                                        <button onClick={() => eliminarClase(claseDetalle.id)} className="btn btn-outline-danger rounded-3">
+                                            <i className="bi bi-trash me-1"></i> Eliminar Clase del Horario
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-muted small">Selecciona una clase en el horario para ver su información.</p>
+                            )}
                         </div>
                     </div>
                 </div>

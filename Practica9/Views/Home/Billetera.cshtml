@@ -2,23 +2,30 @@
     ViewData["Title"] = "Billetera Diaria";
 }
 
-<div id="app-billetera" class="row justify-content-center">
+<div id="app-billetera" v-cloak class="row justify-content-center">
     <div class="col-lg-8">
-        <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
             <div>
-                <span class="tech-badge bg-success-subtle text-success mb-1 d-inline-block">Vue.js 3 + SQL Stored Procedure</span>
                 <h3 class="fw-semibold mb-0">Billetera Diaria</h3>
             </div>
-            <button @@click="reiniciarDia" class="btn btn-outline-secondary btn-sm rounded-3">
-                <i class="bi bi-arrow-counterclockwise"></i> Limpiar Gastos de Hoy
-            </button>
+            <div class="d-flex gap-2">
+                <a asp-action="HistorialBilletera" class="btn btn-light border btn-sm rounded-3">
+                    <i class="bi bi-calendar3 me-1"></i> Ver Historial por Calendario
+                </a>
+                <button @@click="generarNuevoDia" class="btn btn-outline-dark btn-sm rounded-3">
+                    <i class="bi bi-sunrise me-1"></i> Generar Nuevo Día
+                </button>
+            </div>
         </div>
 
         <div class="card-minimal p-4 mb-4">
             <div class="row align-items-center g-3">
                 <div class="col-sm-6">
                     <label class="text-muted small fw-medium mb-1">Presupuesto inicial del día ($)</label>
-                    <input type="number" v-model.number="presupuesto" @@change="guardarConfigSql" class="form-control form-control-lg fw-semibold">
+                    <div class="input-group">
+                        <input type="number" v-model.number="presupuesto" class="form-control form-control-lg fw-semibold">
+                        <button @@click="guardarConfigSql" class="btn btn-outline-dark">Guardar</button>
+                    </div>
                 </div>
                 <div class="col-sm-6 text-sm-end">
                     <span class="text-muted small d-block">Saldo Disponible</span>
@@ -35,7 +42,7 @@
                 <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" id="chkEstricto" v-model="bloquearSobregiro" @@change="guardarConfigSql">
                     <label class="form-check-label text-muted" for="chkEstricto">
-                        Bloquear sobregiros desde SQL Server (sp_RegistrarGastoBilletera)
+                        Bloquear gastos que excedan mi presupuesto disponible
                     </label>
                 </div>
                 <div class="form-check form-switch">
@@ -48,7 +55,7 @@
         </div>
 
         <div class="card-minimal p-4 mb-4">
-            <h6 class="fw-semibold mb-3">Registrar movimiento en BD</h6>
+            <h6 class="fw-semibold mb-3">Registrar movimiento</h6>
             <div class="row g-2 align-items-center">
                 <div class="col-md-4">
                     <input type="text" v-model="nuevoConcepto" @@keyup.enter="agregarGasto" class="form-control" placeholder="¿En qué gastaste?">
@@ -62,24 +69,24 @@
                     <input type="number" v-model.number="nuevoMonto" @@keyup.enter="agregarGasto" class="form-control" placeholder="Monto $">
                 </div>
                 <div class="col-md-3 d-grid">
-                    <button @@click="agregarGasto" class="btn-dark-minimal">Anexar a SQL</button>
+                    <button @@click="agregarGasto" class="btn-dark-minimal">Guardar</button>
                 </div>
             </div>
             <div class="form-check mt-2">
                 <input class="form-check-input" type="checkbox" id="chkPagadoYa" v-model="nuevoVerificado">
                 <label class="form-check-label small text-muted" for="chkPagadoYa">
-                    Marcar con check de "Ya pagado / Verificado" al insertar
+                    Marcar con check de "Ya pagado / Verificado" al guardar
                 </label>
             </div>
         </div>
 
         <div class="card-minimal p-4">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h6 class="fw-semibold mb-0">Movimientos de hoy en SQL ({{ gastos.length }})</h6>
+                <h6 class="fw-semibold mb-0">Movimientos del día actual ({{ gastos.length }})</h6>
                 <span class="small text-muted">Verificados: {{ gastos.filter(g => g.verificado).length }}/{{ gastos.length }}</span>
             </div>
             <div v-if="gastos.length === 0" class="text-center text-muted py-4 small">
-                No hay movimientos registrados hoy en la base de datos.
+                No hay movimientos registrados en el día actual.
             </div>
             <ul class="list-group list-group-flush" v-else>
                 <li v-for="gasto in gastos" :key="gasto.id" class="list-group-item px-0 py-3 d-flex justify-content-between align-items-center border-bottom">
@@ -107,14 +114,14 @@
 </div>
 
 @section Scripts {
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="~/lib/frameworks/vue.global.js"></script>
     <script>
         const { createApp } = Vue;
 
         createApp({
             data() {
                 return {
-                    presupuesto: 250,
+                    presupuesto: 200,
                     bloquearSobregiro: true,
                     soloContarVerificados: false,
                     categorias: [],
@@ -150,6 +157,7 @@
             methods: {
                 async cargarDesdeSql() {
                     const res = await fetch('/Home/ObtenerBilletera');
+                    if (!res.ok) return;
                     const data = await res.json();
                     this.presupuesto = data.presupuesto;
                     this.bloquearSobregiro = data.bloquearSobregiro;
@@ -170,7 +178,7 @@
                         return;
                     }
 
-                    window.UI.showLoader('Ejecutando sp_RegistrarGastoBilletera...');
+                    window.UI.showLoader('Guardando gasto...');
                     const res = await fetch('/Home/AgregarGasto', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -185,11 +193,11 @@
                     window.UI.hideLoader();
 
                     if (!res.ok) {
-                        window.UI.showException('Transacción Rechazada por SQL Server', data.error, data.codigo);
+                        window.UI.showException('Operación Rechazada', data.error, data.codigo);
                         return;
                     }
 
-                    window.UI.notify('Gasto Guardado en BD', `-$${this.nuevoMonto.toFixed(2)} en ${this.nuevoConcepto}.`, 'success');
+                    window.UI.notify('Gasto Guardado', `-$${this.nuevoMonto.toFixed(2)} en ${this.nuevoConcepto}.`, 'success');
                     this.nuevoConcepto = '';
                     this.nuevoMonto = null;
                     await this.cargarDesdeSql();
@@ -208,7 +216,7 @@
                             soloContarVerificados: this.soloContarVerificados
                         })
                     });
-                    window.UI.notify('Configuración Actualizada', 'Preferencias guardadas en ConfiguracionBilletera.', 'info', false);
+                    window.UI.notify('Configuración Guardada', 'Tu presupuesto ha sido actualizado.', 'info', false);
                 },
                 async toggleVerificado(gasto) {
                     await fetch(`/Home/ToggleGastoVerificado?id=${gasto.id}`, { method: 'POST' });
@@ -216,15 +224,15 @@
                 },
                 async eliminarGasto(gasto) {
                     await fetch(`/Home/EliminarGasto?id=${gasto.id}`, { method: 'POST' });
-                    window.UI.notify('Registro Eliminado', `Se eliminó "${gasto.concepto}" de SQL Server.`, 'info');
+                    window.UI.notify('Registro Eliminado', `Se eliminó "${gasto.concepto}".`, 'info');
                     await this.cargarDesdeSql();
                 },
-                async reiniciarDia() {
-                    window.UI.showLoader('Limpiando movimientos de hoy en SQL Server...');
-                    await fetch('/Home/ReiniciarBilleteraHoy', { method: 'POST' });
+                async generarNuevoDia() {
+                    window.UI.showLoader('Generando nuevo día...');
+                    await fetch('/Home/GenerarNuevoDia', { method: 'POST' });
                     await this.cargarDesdeSql();
                     window.UI.hideLoader();
-                    window.UI.notify('Día Reiniciado', 'Movimientos del día eliminados de la BD.', 'warning');
+                    window.UI.notify('Nuevo Día Generado', 'Tu billetera activa inició de cero. Los gastos anteriores siguen disponibles en el Calendario.', 'success');
                 }
             },
             mounted() {

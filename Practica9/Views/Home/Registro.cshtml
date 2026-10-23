@@ -1,83 +1,56 @@
 ﻿@{
-    ViewData["Title"] = "Registro de Estudiante";
+    ViewData["Title"] = "Registro";
 }
 
-<div id="app-registro" class="row justify-content-center align-items-center py-3">
-    <div class="col-md-8 col-lg-6">
+<div id="app-registro" v-cloak class="row justify-content-center align-items-center py-4">
+    <div class="col-md-7 col-lg-5">
         <div class="card-minimal p-4 p-md-5">
             <div class="d-flex justify-content-between align-items-start mb-4">
                 <div>
-                    <span class="tech-badge bg-dark text-white mb-2 d-inline-block">Rol Exclusivo: Estudiante</span>
                     <h4 class="fw-semibold mb-1">Crear Cuenta en GarAngelito Tools Pro</h4>
-                    <p class="text-muted small mb-0">Registro normalizado en 3FN sobre GarAngelitoToolsProDB</p>
+                    <p class="text-muted small mb-0">Completa tus datos para registrarte en la plataforma</p>
                 </div>
-                <i class="bi bi-mortarboard fs-2 text-dark"></i>
+                <i class="bi bi-person-plus fs-3 text-dark"></i>
             </div>
 
             <form @@submit.prevent="registrarAlumno">
-                <!-- Atributos de Nombre 100% Atómicos (1FN) -->
                 <div class="row g-3 mb-3">
-                    <div class="col-md-4">
+                    <div class="col-md-12">
                         <label class="form-label small text-muted fw-medium">Nombre(s) *</label>
-                        <input type="text" v-model="form.nombre" class="form-control" placeholder="Ej. Angel" required>
+                        <input type="text" v-model="form.nombre" class="form-control" placeholder="Ej. Ángel" required>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <label class="form-label small text-muted fw-medium">Apellido Paterno *</label>
                         <input type="text" v-model="form.apellidoPaterno" class="form-control" placeholder="Ej. García" required>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <label class="form-label small text-muted fw-medium">Apellido Materno</label>
                         <input type="text" v-model="form.apellidoMaterno" class="form-control" placeholder="Ej. Francisco">
                     </div>
                 </div>
 
-                <!-- Carrera (FK) y Semestre (CHECK 1..12) -->
                 <div class="row g-3 mb-3">
-                    <div class="col-md-8">
-                        <label class="form-label small text-muted fw-medium">Carrera (Catálogo Carreras) *</label>
-                        <select v-model="form.carreraId" class="form-select" required>
-                            <option v-for="c in carreras" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-                        </select>
+                    <div class="col-md-12">
+                        <label class="form-label small text-muted fw-medium">Correo Electrónico *</label>
+                        <input type="email" v-model="form.correo" class="form-control" placeholder="correo@ejemplo.com" required>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label small text-muted fw-medium">Semestre (1 - 12) *</label>
-                        <input type="number" min="1" max="12" v-model.number="form.semestreActual" class="form-control" required>
-                    </div>
-                </div>
-
-                <!-- Correo, Contraseña y Rol Bloqueado -->
-                <div class="row g-3 mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label small text-muted fw-medium">Correo Institucional / Personal *</label>
-                        <input type="email" v-model="form.correo" class="form-control" placeholder="correo@alumno.ipn.mx" required>
-                    </div>
-                    <div class="col-md-6">
+                    <div class="col-md-12">
                         <label class="form-label small text-muted fw-medium">Contraseña *</label>
                         <input type="password" v-model="form.password" class="form-control" placeholder="Mínimo 4 caracteres" required>
                     </div>
                 </div>
 
-                <!-- Indicador de Rol Fijo Estudiante -->
-                <div class="p-3 bg-light rounded-3 border mb-3 d-flex justify-content-between align-items-center">
-                    <div class="small">
-                        <strong class="d-block text-dark"><i class="bi bi-shield-lock me-1"></i>Nivel de Acceso Asignado</strong>
-                        <span class="text-muted">Por políticas del sistema, el registro público asigna únicamente el rol de <b>Estudiante</b>.</span>
-                    </div>
-                    <span class="badge bg-success-subtle text-success border border-success-subtle">Estudiante</span>
-                </div>
-
-                <!-- Check obligatorio de confirmación -->
                 <div class="form-check mb-4">
                     <input class="form-check-input" type="checkbox" id="chkTerminos" v-model="aceptaCheck">
                     <label class="form-check-label small text-muted" for="chkTerminos">
-                        Confirmo que mis datos escolares son correctos para inicializar mi Billetera y Tablero Kanban.
+                        Confirmo que mis datos son correctos para crear mi cuenta.
                     </label>
                 </div>
 
                 <div class="d-grid mb-3">
                     <button type="submit" class="btn-dark-minimal py-2" :disabled="cargando">
                         <span v-if="cargando" class="spinner-border spinner-border-sm me-2"></span>
-                        {{ cargando ? 'Registrando en SQL Server...' : 'Completar Registro de Estudiante' }}
+                        {{ cargando ? 'Guardando...' : 'Guardar' }}
                     </button>
                 </div>
 
@@ -93,23 +66,19 @@
 </div>
 
 @section Scripts {
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="~/lib/frameworks/vue.global.js"></script>
     <script>
         const { createApp } = Vue;
-        const carrerasServidor = @Html.Raw(ViewBag.CarrerasJson ?? "[]");
 
         createApp({
             data() {
                 return {
-                    carreras: carrerasServidor,
                     form: {
                         nombre: '',
                         apellidoPaterno: '',
                         apellidoMaterno: '',
                         correo: '',
-                        password: '',
-                        carreraId: carrerasServidor.length > 0 ? carrerasServidor[0].id : 1,
-                        semestreActual: 5
+                        password: ''
                     },
                     aceptaCheck: false,
                     cargando: false
@@ -119,8 +88,8 @@
                 async registrarAlumno() {
                     if (!this.aceptaCheck) {
                         window.UI.showException(
-                            'Check de Confirmación Requerido',
-                            'Debes marcar la casilla (check) de confirmación antes de crear tu cuenta de estudiante.',
+                            'Confirmación Requerida',
+                            'Debes marcar la casilla de confirmación antes de guardar tu registro.',
                             'ERR_CHECK_TERMS_REQUIRED'
                         );
                         return;
@@ -136,7 +105,7 @@
                     }
 
                     this.cargando = true;
-                    window.UI.showLoader('Creando perfil de Estudiante en GarAngelitoToolsProDB...');
+                    window.UI.showLoader('Guardando cuenta...');
 
                     try {
                         const res = await fetch('/Home/RegistrarEstudiante', {
@@ -148,11 +117,14 @@
                         window.UI.hideLoader();
 
                         if (!res.ok) {
-                            window.UI.showException('Error al Registrar Estudiante', data.error, data.codigo);
+                            window.UI.showException('Error al Registrar', data.error, data.codigo);
                             return;
                         }
 
-                        window.location.href = data.redirectUrl;
+                        window.UI.notify('Cuenta Creada', 'Registro exitoso. Ahora inicia sesión.', 'success', false);
+                        setTimeout(() => {
+                            window.location.href = data.redirectUrl;
+                        }, 900);
                     } catch (e) {
                         window.UI.hideLoader();
                         window.UI.showException('Error de Red', 'No fue posible comunicarse con el servidor.', 'ERR_NET_REGISTER');
